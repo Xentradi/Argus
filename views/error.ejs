@@ -1,0 +1,9 @@
+<%- include('partials/layout-top', { title: 'Error' }) %>
+
+<section class="card narrow">
+  <h1>Unexpected Error</h1>
+  <p><%= errorMessage %></p>
+  <a class="button" href="/">Back to Dashboard</a>
+</section>
+
+<%- include('partials/layout-bottom') %>

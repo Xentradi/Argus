@@ -1,0 +1,31 @@
+{
+  "name": "argus",
+  "version": "1.0.0",
+  "description": "Argus self-hosted uptime monitor with Slack/Discord alerts and MFA-protected UI",
+  "main": "src/app.js",
+  "private": true,
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "test": "node --test",
+    "smoke": "node scripts/smoke-check.js",
+    "seed": "node scripts/seed-monitors.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "axios": "^1.8.4",
+    "bcryptjs": "^2.4.3",
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "helmet": "^8.1.0",
+    "qrcode": "^1.5.4",
+    "speakeasy": "^2.0.0",
+    "better-sqlite3": "^11.8.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9"
+  }
+}

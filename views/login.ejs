@@ -1,0 +1,22 @@
+<%- include('partials/layout-top', { title: 'Login' }) %>
+
+<section class="card narrow">
+  <h1>Sign In</h1>
+  <p>Use your username/password, then complete TOTP MFA.</p>
+
+  <form method="post" action="/login" class="form-grid">
+    <label>
+      Username
+      <input type="text" name="username" autocomplete="username" required />
+    </label>
+
+    <label>
+      Password
+      <input type="password" name="password" autocomplete="current-password" required />
+    </label>
+
+    <button class="button" type="submit">Continue</button>
+  </form>
+</section>
+
+<%- include('partials/layout-bottom') %>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= title ? `${title} - ${appName}` : appName %></title>
+    <link rel="stylesheet" href="/public/styles.css" />
+  </head>
+  <body>
+    <div class="page-background"></div>
+    <main class="container">
+      <header class="site-header">
+        <div>
+          <a class="brand" href="/"> <%= appName %> </a>
+          <p class="subtitle">Argus monitoring control</p>
+        </div>
+
+        <% if (authenticated) { %>
+        <div class="header-actions">
+          <a class="button muted" href="/">Dashboard</a>
+          <a class="button" href="/monitors/new">New Monitor</a>
+          <form action="/logout" method="post">
+            <button class="button danger" type="submit">Log Out</button>
+          </form>
+        </div>
+        <% } %>
+      </header>
+
+      <% if (flash) { %>
+      <div class="flash <%= flash.type %>"><%= flash.message %></div>
+      <% } %>

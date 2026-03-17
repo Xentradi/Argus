@@ -1,0 +1,40 @@
+<%- include('partials/layout-top', { title: 'Initial Setup' }) %>
+
+<section class="card narrow">
+  <h1>Initial Admin Setup</h1>
+  <p>Create your single admin account and verify TOTP MFA.</p>
+
+  <div class="qr-block">
+    <img src="<%= qrCodeDataUrl %>" alt="TOTP QR code" />
+    <p>Scan this with your authenticator app before submitting the form.</p>
+  </div>
+
+  <form method="post" action="/setup" class="form-grid">
+    <label>
+      Username
+      <input type="text" name="username" autocomplete="username" required />
+    </label>
+
+    <label>
+      Password
+      <input type="password" name="password" autocomplete="new-password" required />
+    </label>
+
+    <label>
+      Current TOTP Code
+      <input
+        type="text"
+        name="otpCode"
+        inputmode="numeric"
+        pattern="[0-9]{6}"
+        maxlength="6"
+        minlength="6"
+        required
+      />
+    </label>
+
+    <button class="button" type="submit">Create Account</button>
+  </form>
+</section>
+
+<%- include('partials/layout-bottom') %>

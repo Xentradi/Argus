@@ -1,0 +1,114 @@
+<%- include('partials/layout-top', { title: editing ? 'Edit Monitor' : 'New Monitor' }) %>
+
+<section class="card">
+  <h1><%= editing ? 'Edit Monitor' : 'Create Monitor' %></h1>
+
+  <form method="post" action="<%= editing ? `/monitors/${monitor.id}/update` : '/monitors' %>" class="form-grid two-col" id="monitor-form">
+    <label>
+      Name
+      <input type="text" name="name" value="<%= monitor.name %>" required />
+    </label>
+
+    <label>
+      Group
+      <input type="text" name="groupName" value="<%= monitor.groupName || 'Default' %>" placeholder="Company name" required />
+    </label>
+
+    <label>
+      Check Type
+      <select name="checkType" id="checkType" required>
+        <option value="ping" <%= monitor.checkType === 'ping' ? 'selected' : '' %>>Ping</option>
+        <option value="http" <%= monitor.checkType === 'http' ? 'selected' : '' %>>HTTP status</option>
+        <option value="keyword" <%= monitor.checkType === 'keyword' ? 'selected' : '' %>>Keyword</option>
+      </select>
+    </label>
+
+    <label id="host-field">
+      Host (for ping)
+      <input type="text" name="host" value="<%= monitor.host || '' %>" placeholder="example.com" />
+    </label>
+
+    <label id="url-field">
+      URL (for HTTP/Keyword)
+      <input type="url" name="url" value="<%= monitor.url || '' %>" placeholder="https://example.com/health" />
+    </label>
+
+    <label>
+      HTTP success criteria
+      <select name="httpStatusMode">
+        <option value="2xx" <%= monitor.httpStatusMode === '2xx' ? 'selected' : '' %>>Any HTTP 2xx</option>
+        <option value="200" <%= monitor.httpStatusMode === '200' ? 'selected' : '' %>>Only HTTP 200</option>
+      </select>
+    </label>
+
+    <label>
+      Timeout (ms)
+      <input type="number" name="timeoutMs" min="1000" max="120000" step="1000" value="<%= monitor.timeoutMs %>" required />
+    </label>
+
+    <label id="keyword-field">
+      Keyword (for keyword checks)
+      <input type="text" name="keyword" value="<%= monitor.keyword || '' %>" placeholder="Expected text" />
+    </label>
+
+    <label>
+      Case-sensitive keyword match
+      <select name="keywordCaseSensitive">
+        <option value="off" <%= monitor.keywordCaseSensitive ? '' : 'selected' %>>No</option>
+        <option value="on" <%= monitor.keywordCaseSensitive ? 'selected' : '' %>>Yes</option>
+      </select>
+    </label>
+
+    <label>
+      TLS certificate errors are failures
+      <select name="tlsErrorAsFailure">
+        <option value="true" <%= monitor.tlsErrorAsFailure ? 'selected' : '' %>>Yes (recommended)</option>
+        <option value="false" <%= monitor.tlsErrorAsFailure ? '' : 'selected' %>>No (ignore cert errors)</option>
+      </select>
+    </label>
+
+    <label>
+      Alert destination
+      <select name="webhookType" required>
+        <option value="slack" <%= monitor.webhookType === 'slack' ? 'selected' : '' %>>Slack</option>
+        <option value="discord" <%= monitor.webhookType === 'discord' ? 'selected' : '' %>>Discord</option>
+      </select>
+    </label>
+
+    <label class="full">
+      Webhook URL
+      <input type="url" name="webhookUrl" value="<%= monitor.webhookUrl || '' %>" required />
+    </label>
+
+    <label class="inline-check full">
+      <input type="checkbox" name="active" <%= monitor.active ? 'checked' : '' %> />
+      <span>Monitor is active</span>
+    </label>
+
+    <div class="full row-actions">
+      <button class="button" type="submit"><%= editing ? 'Save Changes' : 'Create Monitor' %></button>
+      <a class="button muted" href="/">Cancel</a>
+    </div>
+  </form>
+</section>
+
+<script>
+  (function () {
+    const checkType = document.getElementById('checkType');
+    const hostField = document.getElementById('host-field');
+    const urlField = document.getElementById('url-field');
+    const keywordField = document.getElementById('keyword-field');
+
+    function updateVisibility() {
+      const type = checkType.value;
+      hostField.style.display = type === 'ping' ? 'grid' : 'none';
+      urlField.style.display = type === 'ping' ? 'none' : 'grid';
+      keywordField.style.display = type === 'keyword' ? 'grid' : 'none';
+    }
+
+    checkType.addEventListener('change', updateVisibility);
+    updateVisibility();
+  })();
+</script>
+
+<%- include('partials/layout-bottom') %>

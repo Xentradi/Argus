@@ -1,0 +1,156 @@
+<%- include('partials/layout-top', { title: 'Dashboard' }) %>
+
+<section class="grid-stats">
+  <article class="stat-card">
+    <h2>Total</h2>
+    <p><%= summary.total %></p>
+  </article>
+  <article class="stat-card">
+    <h2>Groups</h2>
+    <p><%= summary.groups %></p>
+  </article>
+  <article class="stat-card up">
+    <h2>Up</h2>
+    <p><%= summary.up %></p>
+  </article>
+  <article class="stat-card down">
+    <h2>Down</h2>
+    <p><%= summary.down %></p>
+  </article>
+  <article class="stat-card unknown">
+    <h2>Unknown</h2>
+    <p><%= summary.unknown %></p>
+  </article>
+</section>
+
+<section class="card">
+  <div class="section-head">
+    <h1>Monitors</h1>
+    <a class="button" href="/monitors/new">Add Monitor</a>
+  </div>
+
+  <% if (groupedMonitors.length === 0) { %>
+  <p class="empty">No monitors yet.</p>
+  <% } else { %>
+    <% groupedMonitors.forEach((group) => { %>
+    <h3 class="group-title"><%= group.groupName %> <span>(<%= group.monitors.length %>)</span></h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Target</th>
+            <th>Status</th>
+            <th>Last Check</th>
+            <th>Next Check</th>
+            <th>Last Error</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% group.monitors.forEach((monitor) => { %>
+          <tr>
+            <td>
+              <div class="cell-title"><%= monitor.name %></div>
+              <div class="cell-sub"><%= monitor.active ? 'Active' : 'Paused' %></div>
+            </td>
+            <td><%= monitor.checkType %></td>
+            <td class="target"><%= monitorTarget(monitor) || '-' %></td>
+            <td>
+              <span class="status <%= monitor.runtime.status %>"><%= monitor.runtime.status %></span>
+            </td>
+            <td>
+              <%= monitor.runtime.lastCheckAt ? new Date(monitor.runtime.lastCheckAt).toLocaleString() : 'Never' %>
+            </td>
+            <td>
+              <%= monitor.runtime.nextCheckAt ? new Date(monitor.runtime.nextCheckAt).toLocaleTimeString() : '-' %>
+            </td>
+            <td class="target"><%= monitor.runtime.lastError || '-' %></td>
+            <td>
+              <div class="row-actions">
+                <a class="button small muted" href="/monitors/<%= monitor.id %>/edit">Edit</a>
+                <form action="/monitors/<%= monitor.id %>/toggle" method="post">
+                  <button class="button small" type="submit"><%= monitor.active ? 'Pause' : 'Resume' %></button>
+                </form>
+                <form action="/monitors/<%= monitor.id %>/delete" method="post" onsubmit="return confirm('Delete this monitor?');">
+                  <button class="button small danger" type="submit">Delete</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <% }) %>
+  <% } %>
+</section>
+
+<section class="card">
+  <h2>Incident History (3 years retained)</h2>
+
+  <% if (incidents.length === 0) { %>
+  <p class="empty">No incidents recorded yet.</p>
+  <% } else { %>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Monitor</th>
+          <th>Started</th>
+          <th>Ended</th>
+          <th>Duration</th>
+          <th>Down Reason</th>
+          <th>Recovery</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% incidents.forEach((incident) => { %>
+        <tr>
+          <td><%= incident.monitorName %></td>
+          <td><%= new Date(incident.startedAt).toLocaleString() %></td>
+          <td><%= incident.endedAt ? new Date(incident.endedAt).toLocaleString() : 'Open' %></td>
+          <td><%= incident.durationSeconds === null ? '-' : `${incident.durationSeconds}s` %></td>
+          <td class="target"><%= incident.downReason || '-' %></td>
+          <td class="target"><%= incident.recoveryReason || '-' %></td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</section>
+
+<section class="card">
+  <h2>Event Log</h2>
+
+  <% if (events.length === 0) { %>
+  <p class="empty">No events yet.</p>
+  <% } else { %>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Monitor</th>
+          <th>Type</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% events.forEach((event) => { %>
+        <tr>
+          <td><%= new Date(event.createdAt).toLocaleString() %></td>
+          <td><%= event.monitorName || '-' %></td>
+          <td><%= event.eventType %></td>
+          <td class="target"><%= event.message %></td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</section>
+
+<%- include('partials/layout-bottom') %>

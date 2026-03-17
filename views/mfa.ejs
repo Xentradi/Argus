@@ -1,0 +1,25 @@
+<%- include('partials/layout-top', { title: 'MFA' }) %>
+
+<section class="card narrow">
+  <h1>Multi-Factor Authentication</h1>
+  <p>Enter the 6-digit code from your authenticator app.</p>
+
+  <form method="post" action="/mfa" class="form-grid">
+    <label>
+      TOTP Code
+      <input
+        type="text"
+        name="otpCode"
+        inputmode="numeric"
+        pattern="[0-9]{6}"
+        maxlength="6"
+        minlength="6"
+        required
+      />
+    </label>
+
+    <button class="button" type="submit">Sign In</button>
+  </form>
+</section>
+
+<%- include('partials/layout-bottom') %>
