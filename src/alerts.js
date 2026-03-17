@@ -28,9 +28,7 @@ function monitorTarget(monitor) {
 
 function buildAlertMessage(monitor, payload) {
   const presentation = resolveAlertPresentation(monitor, payload);
-  const at = formatAlertTimestamp(payload.at);
-  const target = monitorTarget(monitor) || '-';
-  return `${presentation.statusLabel} - ${monitor.name} - ${presentation.timeLabel} ${at} - ${target}`;
+  return buildAlertLines(monitor, payload, presentation).join('\n');
 }
 
 function formatAlertTimestamp(isoTime) {
@@ -66,85 +64,71 @@ function resolveAlertPresentation(monitor, payload) {
 
   if (payload.type === 'down') {
     return {
-      title: `*DOWN* - ${monitor.name}`,
+      title: `🔴 DOWN - ${monitor.name}`,
       colorHex: '#dc2626',
       statusLabel: 'DOWN',
-      timeLabel: 'Down at'
+      timeLabel: 'Down at',
+      emoji: '🔴'
     };
   }
 
   if (payload.type === 'recovery') {
     return {
-      title: `*UP* - ${monitor.name}`,
+      title: '🟢 UP',
       colorHex: '#16a34a',
       statusLabel: 'UP',
-      timeLabel: 'Up as of'
+      timeLabel: 'Up as of',
+      emoji: '🟢'
     };
   }
 
   if (status === 'down') {
     return {
-      title: `*DOWN* - ${monitor.name}`,
+      title: `🔴 DOWN - ${monitor.name}`,
       colorHex: '#dc2626',
       statusLabel: 'DOWN',
-      timeLabel: 'Down at'
+      timeLabel: 'Down at',
+      emoji: '🔴'
     };
   }
 
   if (status === 'up') {
     return {
-      title: `*UP* - ${monitor.name}`,
+      title: `🟢 UP - ${monitor.name}`,
       colorHex: '#16a34a',
       statusLabel: 'UP',
-      timeLabel: 'Up as of'
+      timeLabel: 'Up as of',
+      emoji: '🟢'
     };
   }
 
   return {
-    title: `*STATUS* - ${monitor.name}`,
+    title: `🟡 STATUS - ${monitor.name}`,
     colorHex: '#64748b',
     statusLabel: (status || 'unknown').toUpperCase(),
-    timeLabel: 'Status as of'
+    timeLabel: 'Status as of',
+    emoji: '🟡'
   };
 }
 
-function buildAlertFields(monitor, payload) {
+function buildAlertLines(monitor, payload, presentation) {
   const formattedTime = formatAlertTimestamp(payload.at);
   const target = monitorTarget(monitor);
-  const presentation = resolveAlertPresentation(monitor, payload);
-  const fields = [
-    { name: 'Target', value: target || '-', inline: false },
-    { name: presentation.timeLabel, value: formattedTime, inline: false }
+  const lines = [
+    `${presentation.emoji} *${presentation.statusLabel}* ${monitor.name}`,
+    `*Target:* ${target || '-'}`,
+    `*${presentation.timeLabel}:* ${formattedTime}`
   ];
 
   if (payload.type === 'recovery') {
-    fields.push({
-      name: 'Downtime',
-      value: formatDuration(payload.durationSeconds),
-      inline: true
-    });
+    lines.push(`*Downtime:* ${formatDuration(payload.durationSeconds)}`);
   }
 
-  if (payload.reason) {
-    fields.push({
-      name: payload.type === 'down' ? 'Error' : 'Details',
-      value: payload.reason,
-      inline: false
-    });
+  if (payload.reason && presentation.statusLabel === 'DOWN') {
+    lines.push(`*Error:* ${payload.reason}`);
   }
 
-  return fields;
-}
-
-async function postWebhook(webhookType, webhookUrl, text) {
-  const body = buildWebhookBody(webhookType, text);
-
-  await axios.post(webhookUrl, body, {
-    timeout: 10_000,
-    headers: {
-      'content-type': 'application/json'
-    }
-  });
+  return lines;
 }
 
 function buildWebhookBody(webhookType, text) {
@@ -157,7 +141,8 @@ function buildWebhookBodyWithAlert(webhookType, text, monitor, payload) {
   };
 
   const presentation = monitor && payload ? resolveAlertPresentation(monitor, payload) : null;
-  const fields = monitor && payload ? buildAlertFields(monitor, payload) : [];
+  const lines = monitor && payload ? buildAlertLines(monitor, payload, presentation) : [];
+  const detailText = lines.slice(1).join('\n');
 
   if (webhookType === 'discord') {
     const body = { ...common };
@@ -167,12 +152,7 @@ function buildWebhookBodyWithAlert(webhookType, text, monitor, payload) {
         {
           title: presentation.title,
           color: hexToDiscordColor(presentation.colorHex),
-          description: `**${presentation.statusLabel}**`,
-          fields: fields.map((field) => ({
-            name: field.name,
-            value: field.value || '-',
-            inline: Boolean(field.inline)
-          })),
+          description: detailText,
           footer: {
             text: `${config.appName} • ${config.alertTimezone}`
           }
@@ -190,7 +170,7 @@ function buildWebhookBodyWithAlert(webhookType, text, monitor, payload) {
   }
 
   const body = {
-    text: presentation ? `${presentation.statusLabel}: ${monitor.name}` : text,
+    text: presentation ? lines[0] : text,
     ...common
   };
 
@@ -198,12 +178,8 @@ function buildWebhookBodyWithAlert(webhookType, text, monitor, payload) {
     body.attachments = [
       {
         color: presentation.colorHex,
-        title: presentation.title,
-        fields: fields.map((field) => ({
-          title: field.name,
-          value: field.value || '-',
-          short: Boolean(field.inline)
-        })),
+        text: detailText,
+        mrkdwn_in: ['text'],
         footer: `${config.appName} • ${config.alertTimezone}`
       }
     ];

@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 
 function parseIntEnv(name, fallback, min, max) {
@@ -31,10 +32,24 @@ const webhookPublicBaseUrl = trimTrailingSlash(
   process.env.WEBHOOK_PUBLIC_BASE_URL || process.env.APP_PUBLIC_URL || `http://127.0.0.1:${port}`
 );
 const webhookIconPath = process.env.WEBHOOK_ICON_PATH || '/img/argus.jpg';
+const webhookIconVersion =
+  process.env.WEBHOOK_ICON_VERSION ||
+  (() => {
+    try {
+      const localIconPath = path.join(process.cwd(), 'public', 'img', 'argus.jpg');
+      const stat = fs.statSync(localIconPath);
+      return String(Math.floor(stat.mtimeMs));
+    } catch (_error) {
+      return '';
+    }
+  })();
+const webhookIconPathWithVersion = webhookIconVersion
+  ? `${webhookIconPath}${webhookIconPath.includes('?') ? '&' : '?'}v=${encodeURIComponent(webhookIconVersion)}`
+  : webhookIconPath;
 const webhookIconUrl =
   process.env.WEBHOOK_ICON_URL ||
   (process.env.WEBHOOK_PUBLIC_BASE_URL || process.env.APP_PUBLIC_URL
-    ? `${webhookPublicBaseUrl}${webhookIconPath}`
+    ? `${webhookPublicBaseUrl}${webhookIconPathWithVersion}`
     : '');
 
 module.exports = {
