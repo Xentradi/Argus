@@ -36,14 +36,19 @@
   <p class="empty">No monitors yet.</p>
   <% } else { %>
     <% groupedMonitors.forEach((group) => { %>
-    <h3 class="group-title"><%= group.groupName %> <span>(<%= group.monitors.length %>)</span></h3>
+    <div class="section-head group-head">
+      <h3 class="group-title"><%= group.groupName %> <span>(<%= group.monitors.length %>)</span></h3>
+      <form action="/groups/<%= group.groupId || 'ungrouped' %>/alert" method="post">
+        <button class="button small muted" type="submit">Alert Group</button>
+      </form>
+    </div>
     <div class="table-wrap">
       <table class="monitor-table">
         <thead>
           <tr>
             <th>Status</th>
-            <th>Host / Target</th>
             <th>Name</th>
+            <th>Hostname</th>
             <th>Type</th>
             <th>Last Check</th>
             <th>Next Check</th>
@@ -58,11 +63,11 @@
             <td class="status-cell">
               <span class="status <%= monitor.runtime.status %>"><%= hasUnconfirmedFailures ? 'up (confirming)' : monitor.runtime.status %></span>
             </td>
-            <td class="target host-cell" title="<%= monitorTarget(monitor) || '-' %>"><%= monitorTarget(monitor) || '-' %></td>
             <td>
               <span class="cell-title"><%= monitor.name %></span>
               <span class="monitor-chip <%= monitor.active ? 'active' : 'paused' %>"><%= monitor.active ? 'Active' : 'Paused' %></span>
             </td>
+            <td class="target host-cell" title="<%= monitorTarget(monitor) || '-' %>"><%= monitorTarget(monitor) || '-' %></td>
             <td><%= monitor.checkType %></td>
             <td>
               <% if (monitor.runtime.lastCheckAt) { %>
@@ -83,6 +88,9 @@
               <details class="action-menu">
                 <summary class="button small muted">Actions</summary>
                 <div class="action-menu-list">
+                  <form action="/monitors/<%= monitor.id %>/alert" method="post">
+                    <button class="action-menu-item" type="submit">Alert Monitor</button>
+                  </form>
                   <a class="action-menu-item" href="/monitors/<%= monitor.id %>/edit">Edit</a>
                   <form action="/monitors/<%= monitor.id %>/move" method="post">
                     <input type="hidden" name="direction" value="up" />

@@ -31,13 +31,29 @@ function buildAlertMessage(monitor, payload) {
     lines.push(`Target: ${monitor.checkType === 'ping' ? monitor.host : monitor.url}`);
     lines.push(`Time: ${payload.at}`);
     lines.push(`Reason: ${payload.reason || 'Unknown failure'}`);
-  } else {
+  } else if (payload.type === 'recovery') {
     lines.push(`[RECOVERY] ${monitor.name}`);
     lines.push(`Check type: ${monitor.checkType}`);
     lines.push(`Target: ${monitor.checkType === 'ping' ? monitor.host : monitor.url}`);
     lines.push(`Time: ${payload.at}`);
     lines.push(`Downtime: ${formatDuration(payload.durationSeconds)}`);
     lines.push(`Recovery check: ${payload.reason || 'Confirmed healthy'}`);
+  } else {
+    lines.push(`[STATUS] ${monitor.name}`);
+    lines.push(`Check type: ${monitor.checkType}`);
+    lines.push(`Target: ${monitor.checkType === 'ping' ? monitor.host : monitor.url}`);
+    lines.push(`Time: ${payload.at}`);
+    lines.push(`Current status: ${String(payload.status || monitor.runtime?.status || 'unknown').toUpperCase()}`);
+
+    if (payload.lastCheckAt) {
+      lines.push(`Last check: ${payload.lastCheckAt}`);
+    }
+
+    if (payload.reason) {
+      lines.push(`Last error: ${payload.reason}`);
+    }
+
+    lines.push(`Triggered by: ${payload.trigger || 'manual'}`);
   }
 
   return lines.join('\n');
@@ -116,5 +132,6 @@ async function sendWebhookAlert(monitor, payload) {
 module.exports = {
   sendWebhookAlert,
   formatDuration,
-  buildWebhookBody
+  buildWebhookBody,
+  buildAlertMessage
 };

@@ -10,6 +10,7 @@ const QRCode = require('qrcode');
 const config = require('./config');
 const { DataStore } = require('./store');
 const { MonitorEngine } = require('./monitorEngine');
+const { sendWebhookAlert } = require('./alerts');
 const { clampNumber, isLikelyUrl, normalizeUrl, safeLower } = require('./utils');
 
 const app = express();
@@ -113,6 +114,17 @@ function requireAuth(req, res, next) {
 
 function monitorTarget(monitor) {
   return monitor.checkType === 'ping' ? monitor.host : monitor.url;
+}
+
+async function sendManualStatusAlert(monitor, trigger) {
+  return sendWebhookAlert(monitor, {
+    type: 'status',
+    at: new Date().toISOString(),
+    status: monitor.runtime?.status || 'unknown',
+    lastCheckAt: monitor.runtime?.lastCheckAt || null,
+    reason: monitor.runtime?.lastError || null,
+    trigger
+  });
 }
 
 function parseMonitorForm(body, existing = null) {
@@ -684,6 +696,102 @@ app.post('/monitors/:id/move', requireAuth, (req, res) => {
   setFlash(req, 'success', `Monitor moved ${direction}.`);
   res.redirect('/');
 });
+
+app.post(
+  '/monitors/:id/alert',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const monitor = store.getMonitorById(req.params.id);
+    if (!monitor) {
+      setFlash(req, 'error', 'Monitor not found.');
+      res.redirect('/');
+      return;
+    }
+
+    const alertResult = await sendManualStatusAlert(monitor, 'manual monitor alert');
+
+    store.addEvent({
+      monitorId: monitor.id,
+      monitorName: monitor.name,
+      eventType: alertResult.ok ? 'manual_alert_sent' : 'manual_alert_failed',
+      message: alertResult.ok
+        ? 'Manual status alert sent'
+        : `Manual status alert failed: ${alertResult.error || 'unknown error'}`,
+      details: {
+        channel: monitor.webhookType,
+        skipped: Boolean(alertResult.skipped)
+      }
+    });
+
+    setFlash(
+      req,
+      alertResult.ok ? 'success' : 'error',
+      alertResult.ok ? `Status alert sent for ${monitor.name}.` : `Failed to alert ${monitor.name}: ${alertResult.error}`
+    );
+    res.redirect('/');
+  })
+);
+
+app.post(
+  '/groups/:id/alert',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const groupId = req.params.id === 'ungrouped' ? null : req.params.id;
+    if (groupId) {
+      const group = store.getGroupById(groupId);
+      if (!group) {
+        setFlash(req, 'error', 'Group not found.');
+        res.redirect('/');
+        return;
+      }
+    }
+
+    const monitors = store
+      .listMonitors()
+      .filter((monitor) => (groupId ? monitor.groupId === groupId : monitor.groupId === null));
+
+    if (monitors.length === 0) {
+      setFlash(req, 'error', 'No monitors in this group.');
+      res.redirect('/');
+      return;
+    }
+
+    let ok = 0;
+    let failed = 0;
+
+    for (const monitor of monitors) {
+      const alertResult = await sendManualStatusAlert(monitor, 'manual group alert');
+      if (alertResult.ok) {
+        ok += 1;
+      } else {
+        failed += 1;
+      }
+
+      store.addEvent({
+        monitorId: monitor.id,
+        monitorName: monitor.name,
+        eventType: alertResult.ok ? 'manual_alert_sent' : 'manual_alert_failed',
+        message: alertResult.ok
+          ? 'Manual status alert sent'
+          : `Manual status alert failed: ${alertResult.error || 'unknown error'}`,
+        details: {
+          channel: monitor.webhookType,
+          skipped: Boolean(alertResult.skipped),
+          groupAlert: true
+        }
+      });
+    }
+
+    setFlash(
+      req,
+      failed > 0 ? 'error' : 'success',
+      failed > 0
+        ? `Group alert finished: sent=${ok}, failed=${failed}.`
+        : `Group alert sent for ${ok} monitor${ok === 1 ? '' : 's'}.`
+    );
+    res.redirect('/');
+  })
+);
 
 app.get('/groups', requireAuth, (req, res) => {
   res.render('groups', {
