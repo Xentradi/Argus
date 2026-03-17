@@ -94,13 +94,22 @@
           </thead>
           <tbody>
             <% group.monitors.forEach((monitor) => { %>
+            <% const incidentsForMonitor = (incidentsByMonitor && incidentsByMonitor[monitor.id]) || []; %>
             <tr class="monitor-row <%= monitor.runtime.status %>" data-monitor-id="<%= monitor.id %>" data-group-id="<%= group.groupId || 'ungrouped' %>">
               <td class="status-cell">
                 <span class="status <%= monitor.runtime.status %>" data-field="status"><%= monitor.hasUnconfirmedFailures ? 'up (confirming)' : monitor.runtime.status %></span>
               </td>
               <td>
-                <span class="cell-title" data-field="name"><%= monitor.name %></span>
-                <span class="monitor-chip <%= monitor.active ? 'active' : 'paused' %>" data-field="active-chip"><%= monitor.active ? 'Active' : 'Paused' %></span>
+                <button
+                  class="monitor-expand"
+                  type="button"
+                  data-toggle-incidents="<%= monitor.id %>"
+                  aria-expanded="false"
+                  aria-controls="monitor-incidents-<%= monitor.id %>"
+                >
+                  <span class="cell-title" data-field="name"><%= monitor.name %></span>
+                  <span class="monitor-chip <%= monitor.active ? 'active' : 'paused' %>" data-field="active-chip"><%= monitor.active ? 'Active' : 'Paused' %></span>
+                </button>
               </td>
               <td class="target host-cell" data-field="target" title="<%= monitor.target %>"><%= monitor.target %></td>
               <td data-field="check-type"><%= monitor.checkType %></td>
@@ -155,6 +164,48 @@
                 </details>
               </td>
             </tr>
+            <tr class="monitor-incidents-row" id="monitor-incidents-<%= monitor.id %>" data-incidents-row-for="<%= monitor.id %>" hidden>
+              <td colspan="9">
+                <div class="monitor-incidents-panel">
+                  <div class="monitor-incidents-head">
+                    <strong>Incident History for <%= monitor.name %></strong>
+                    <span class="cell-sub"><%= incidentsForMonitor.length %> shown</span>
+                  </div>
+                  <% if (incidentsForMonitor.length === 0) { %>
+                  <p class="empty">No incidents recorded for this monitor.</p>
+                  <% } else { %>
+                  <div class="table-wrap monitor-incidents-wrap">
+                    <table class="monitor-incidents-table">
+                      <thead>
+                        <tr>
+                          <th>Start</th>
+                          <th>End</th>
+                          <th>Duration</th>
+                          <th>Reason</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <% incidentsForMonitor.forEach((incident) => { %>
+                        <tr>
+                          <td><time class="js-local-time" datetime="<%= incident.startedAt %>" data-style="datetime"><%= incident.startedAt %></time></td>
+                          <td>
+                            <% if (incident.endedAt) { %>
+                            <time class="js-local-time" datetime="<%= incident.endedAt %>" data-style="datetime"><%= incident.endedAt %></time>
+                            <% } else { %>
+                            Open
+                            <% } %>
+                          </td>
+                          <td><span class="js-duration" data-duration-seconds="<%= incident.durationSeconds === null || incident.durationSeconds === undefined ? '' : incident.durationSeconds %>"><%= incident.durationSeconds === null || incident.durationSeconds === undefined ? '-' : `${incident.durationSeconds}s` %></span></td>
+                          <td class="target"><%= incident.downReason || '-' %></td>
+                        </tr>
+                        <% }) %>
+                      </tbody>
+                    </table>
+                  </div>
+                  <% } %>
+                </div>
+              </td>
+            </tr>
             <% }) %>
           </tbody>
         </table>
@@ -166,54 +217,13 @@
 </section>
 
 <section class="card">
-  <h2>Incident History (3 years retained)</h2>
-
-  <% if (incidents.length === 0) { %>
-  <p class="empty">No incidents recorded yet.</p>
-  <% } else { %>
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Monitor</th>
-          <th>Started</th>
-          <th>Ended</th>
-          <th>Duration</th>
-          <th>Down Reason</th>
-          <th>Recovery</th>
-        </tr>
-      </thead>
-      <tbody>
-        <% incidents.forEach((incident) => { %>
-        <tr>
-          <td><%= incident.monitorName %></td>
-          <td><time class="js-local-time" datetime="<%= incident.startedAt %>" data-style="datetime"><%= incident.startedAt %></time></td>
-          <td>
-            <% if (incident.endedAt) { %>
-            <time class="js-local-time" datetime="<%= incident.endedAt %>" data-style="datetime"><%= incident.endedAt %></time>
-            <% } else { %>
-            Open
-            <% } %>
-          </td>
-          <td><span class="js-duration" data-duration-seconds="<%= incident.durationSeconds === null || incident.durationSeconds === undefined ? '' : incident.durationSeconds %>"><%= incident.durationSeconds === null || incident.durationSeconds === undefined ? '-' : `${incident.durationSeconds}s` %></span></td>
-          <td class="target"><%= incident.downReason || '-' %></td>
-          <td class="target"><%= incident.recoveryReason || '-' %></td>
-        </tr>
-        <% }) %>
-      </tbody>
-    </table>
-  </div>
-  <% } %>
-</section>
-
-<section class="card">
   <div class="section-head">
-    <h2>Event Log</h2>
-    <p class="subtitle">Page <%= eventPagination.page %> of <%= eventPagination.totalPages %></p>
+    <h2>Operational Timeline</h2>
+    <p class="subtitle">Latest high-signal monitor and alert events</p>
   </div>
 
-  <% if (events.length === 0) { %>
-  <p class="empty">No events yet.</p>
+  <% if (operationalEvents.length === 0) { %>
+  <p class="empty">No recent operational events.</p>
   <% } else { %>
   <div class="table-wrap">
     <table>
@@ -221,12 +231,12 @@
         <tr>
           <th>Time</th>
           <th>Monitor</th>
-          <th>Type</th>
-          <th>Message</th>
+          <th>Signal</th>
+          <th>Details</th>
         </tr>
       </thead>
       <tbody>
-        <% events.forEach((event) => { %>
+        <% operationalEvents.forEach((event) => { %>
         <tr>
           <td><time class="js-local-time" datetime="<%= event.createdAt %>" data-style="datetime"><%= event.createdAt %></time></td>
           <td><%= event.monitorName || '-' %></td>
@@ -239,16 +249,41 @@
   </div>
   <% } %>
 
-  <% if (eventPagination.totalPages > 1) { %>
-  <div class="row-actions">
-    <% if (eventPagination.hasPrev) { %>
-    <a class="button small muted" href="/?eventsPage=<%= eventPagination.page - 1 %>">Previous</a>
+  <details class="admin-log">
+    <summary>Admin Activity Log</summary>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Monitor</th>
+            <th>Type</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% events.forEach((event) => { %>
+          <tr>
+            <td><time class="js-local-time" datetime="<%= event.createdAt %>" data-style="datetime"><%= event.createdAt %></time></td>
+            <td><%= event.monitorName || '-' %></td>
+            <td><%= event.eventType %></td>
+            <td class="target"><%= event.message %></td>
+          </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <% if (eventPagination.totalPages > 1) { %>
+    <div class="row-actions">
+      <% if (eventPagination.hasPrev) { %>
+      <a class="button small muted" href="/?eventsPage=<%= eventPagination.page - 1 %>">Previous</a>
+      <% } %>
+      <% if (eventPagination.hasNext) { %>
+      <a class="button small muted" href="/?eventsPage=<%= eventPagination.page + 1 %>">Next</a>
+      <% } %>
+    </div>
     <% } %>
-    <% if (eventPagination.hasNext) { %>
-    <a class="button small muted" href="/?eventsPage=<%= eventPagination.page + 1 %>">Next</a>
-    <% } %>
-  </div>
-  <% } %>
+  </details>
 </section>
 
 <script>
@@ -342,6 +377,29 @@
       const ids = Array.from(document.querySelectorAll('tr[data-monitor-id]')).map((node) => node.getAttribute('data-monitor-id'));
       ids.sort();
       return ids;
+    }
+
+    function bindIncidentExpanders() {
+      document.addEventListener('click', (event) => {
+        const trigger = event.target.closest('[data-toggle-incidents]');
+        if (!trigger) {
+          return;
+        }
+
+        const monitorId = trigger.getAttribute('data-toggle-incidents');
+        if (!monitorId) {
+          return;
+        }
+
+        const row = document.querySelector(`[data-incidents-row-for="${monitorId}"]`);
+        if (!row) {
+          return;
+        }
+
+        const nextState = row.hasAttribute('hidden');
+        row.toggleAttribute('hidden', !nextState);
+        trigger.setAttribute('aria-expanded', nextState ? 'true' : 'false');
+      });
     }
 
     function updateActiveOutages(snapshot) {
@@ -544,6 +602,7 @@
 
     localizeTimes();
     renderDurationNodes();
+    bindIncidentExpanders();
 
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') {

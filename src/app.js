@@ -249,7 +249,20 @@ function buildDashboardSnapshot({ eventsPage = 1, includeEvents = true, includeI
         durationSeconds: elapsedSecondsSince(incident.startedAt, nowMs)
       };
     });
+
+    const incidentsByMonitor = {};
+    for (const incident of incidents) {
+      if (!incidentsByMonitor[incident.monitorId]) {
+        incidentsByMonitor[incident.monitorId] = [];
+      }
+
+      if (incidentsByMonitor[incident.monitorId].length < 8) {
+        incidentsByMonitor[incident.monitorId].push(incident);
+      }
+    }
+
     snapshot.incidents = incidents;
+    snapshot.incidentsByMonitor = incidentsByMonitor;
   }
 
   if (includeEvents) {
@@ -261,6 +274,17 @@ function buildDashboardSnapshot({ eventsPage = 1, includeEvents = true, includeI
     const eventsOffset = (safeEventsPage - 1) * eventsPerPage;
 
     snapshot.events = store.listEvents(eventsPerPage, eventsOffset);
+    const operationalEventTypes = new Set([
+      'monitor_down',
+      'monitor_recovered',
+      'alert_down_sent',
+      'alert_down_failed',
+      'alert_recovery_sent',
+      'alert_recovery_failed',
+      'manual_alert_sent',
+      'manual_alert_failed'
+    ]);
+    snapshot.operationalEvents = snapshot.events.filter((event) => operationalEventTypes.has(event.eventType));
     snapshot.eventPagination = {
       page: safeEventsPage,
       totalPages: totalEventPages,
@@ -737,7 +761,9 @@ app.get(
     res.render('dashboard', {
       groupedMonitors: snapshot.groupedMonitors,
       incidents: snapshot.incidents,
+      incidentsByMonitor: snapshot.incidentsByMonitor,
       events: snapshot.events,
+      operationalEvents: snapshot.operationalEvents,
       summary: snapshot.summary,
       activeOutages: snapshot.activeOutages,
       generatedAt: snapshot.generatedAt,

@@ -69,7 +69,7 @@ body {
   margin-bottom: 1rem;
   padding: 1.1rem 1.15rem;
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
+  border-radius: 4px;
   background: linear-gradient(180deg, rgba(25, 27, 33, 0.95) 0%, rgba(13, 14, 18, 0.94) 100%);
   box-shadow: var(--shadow-soft);
 }
@@ -99,7 +99,7 @@ body {
 }
 
 .flash {
-  border-radius: 6px;
+  border-radius: 3px;
   padding: 0.82rem 0.95rem;
   margin-bottom: 1rem;
   border: 1px solid var(--line-strong);
@@ -128,7 +128,7 @@ body {
 
 .stat-card {
   border: 1px solid var(--line-soft);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 0.88rem;
   background: linear-gradient(180deg, rgba(23, 25, 31, 0.96) 0%, rgba(16, 17, 21, 0.96) 100%);
   box-shadow: var(--shadow-soft);
@@ -164,7 +164,7 @@ body {
 .card {
   border: 1px solid var(--line-soft);
   background: linear-gradient(180deg, rgba(20, 22, 28, 0.97) 0%, rgba(13, 14, 18, 0.97) 100%);
-  border-radius: 8px;
+  border-radius: 3px;
   padding: 1rem;
   box-shadow: var(--shadow-soft);
   margin-bottom: 0.9rem;
@@ -197,7 +197,7 @@ body {
 .active-outage-item {
   border: 1px solid rgba(161, 42, 42, 0.5);
   background: linear-gradient(180deg, rgba(52, 18, 24, 0.55) 0%, rgba(31, 13, 16, 0.7) 100%);
-  border-radius: 6px;
+  border-radius: 3px;
   padding: 0.7rem;
 }
 
@@ -357,7 +357,7 @@ th {
   background: linear-gradient(180deg, rgba(47, 182, 212, 0.25) 0%, rgba(27, 117, 138, 0.28) 100%);
   color: var(--text-main);
   text-decoration: none;
-  border-radius: 3px;
+  border-radius: 2px;
   padding: 0.42rem 0.68rem;
   font-weight: 600;
   font-size: 0.84rem;
@@ -445,7 +445,7 @@ textarea:focus {
 
 .status-page-monitor-pick {
   border: 1px solid var(--line-soft);
-  border-radius: 6px;
+  border-radius: 3px;
   padding: 0.7rem;
   margin: 0;
   background: rgba(255, 255, 255, 0.015);
@@ -525,7 +525,7 @@ textarea:focus {
 .monitor-chip {
   display: inline-block;
   margin-left: 0.35rem;
-  border-radius: 2px;
+  border-radius: 1px;
   padding: 0.12rem 0.44rem;
   font-size: 0.68rem;
   font-weight: 700;
@@ -563,7 +563,7 @@ textarea:focus {
   z-index: 20;
   min-width: 170px;
   border: 1px solid var(--line-strong);
-  border-radius: 4px;
+  border-radius: 2px;
   background: #0f1217;
   box-shadow: 0 20px 28px -18px rgba(0, 0, 0, 0.98);
   padding: 0.35rem;
@@ -582,7 +582,7 @@ textarea:focus {
   border: 1px solid var(--line-soft);
   background: rgba(255, 255, 255, 0.02);
   color: var(--text-main);
-  border-radius: 2px;
+  border-radius: 1px;
   padding: 0.38rem 0.46rem;
   font: inherit;
   font-size: 0.82rem;
@@ -626,9 +626,68 @@ textarea:focus {
   width: 180px;
   height: 180px;
   border: 1px solid var(--line-strong);
-  border-radius: 4px;
+  border-radius: 2px;
   background: #11141a;
   padding: 0.35rem;
+}
+
+.monitor-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.monitor-expand:hover .cell-title {
+  color: #c7f6ff;
+}
+
+.monitor-incidents-row td {
+  padding: 0.35rem 0.52rem 0.7rem;
+}
+
+.monitor-incidents-panel {
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, 0.015);
+  border-radius: 2px;
+  padding: 0.6rem;
+}
+
+.monitor-incidents-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.monitor-incidents-wrap table {
+  min-width: 620px;
+}
+
+.monitor-incidents-table th,
+.monitor-incidents-table td {
+  font-size: 0.8rem;
+}
+
+.admin-log {
+  margin-top: 0.9rem;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 0.65rem;
+}
+
+.admin-log > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+  margin-bottom: 0.6rem;
 }
 
 code {
