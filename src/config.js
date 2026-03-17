@@ -31,12 +31,12 @@ const port = parseIntEnv('PORT', 3000, 1, 65535);
 const webhookPublicBaseUrl = trimTrailingSlash(
   process.env.WEBHOOK_PUBLIC_BASE_URL || process.env.APP_PUBLIC_URL || `http://127.0.0.1:${port}`
 );
-const webhookIconPath = process.env.WEBHOOK_ICON_PATH || '/img/argus.jpg';
+const webhookIconPath = process.env.WEBHOOK_ICON_PATH || '/img/argus-logo.png';
 const webhookIconVersion =
   process.env.WEBHOOK_ICON_VERSION ||
   (() => {
     try {
-      const localIconPath = path.join(process.cwd(), 'public', 'img', 'argus.jpg');
+      const localIconPath = path.join(process.cwd(), 'public', 'img', 'argus-logo.png');
       const stat = fs.statSync(localIconPath);
       return String(Math.floor(stat.mtimeMs));
     } catch (_error) {

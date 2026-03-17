@@ -75,6 +75,9 @@ body {
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   text-decoration: none;
   font-family: 'Barlow Condensed', sans-serif;
   text-transform: uppercase;
@@ -82,6 +85,16 @@ body {
   color: var(--text-main);
   font-size: 1.6rem;
   line-height: 1;
+}
+
+.brand-mark-wrap {
+  display: inline-flex;
+}
+
+.brand-mark {
+  width: 1.75rem;
+  height: 1.75rem;
+  object-fit: contain;
 }
 
 .subtitle {

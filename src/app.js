@@ -42,7 +42,11 @@ app.use('/img', express.static(path.join(__dirname, '..', 'public', 'img')));
 
 // Backward-compatible icon URL used in many webhook configs.
 app.get('/img/argus.jpg', (_req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'public', 'img', 'argus.jpg'));
+  res.sendFile(path.join(__dirname, '..', 'public', 'img', 'argus-logo.png'));
+});
+
+app.get('/favicon.ico', (_req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'img', 'favicon.ico'));
 });
 
 const sessionDbDir = path.dirname(config.dbFile);

@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title><%= title ? `${title} - ${appName}` : appName %></title>
+    <link rel="icon" type="image/x-icon" href="/img/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/img/favicon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/img/apple-touch-icon.png" />
     <link rel="stylesheet" href="/public/styles.css" />
   </head>
   <body>
@@ -11,7 +15,13 @@
     <main class="container">
       <header class="site-header">
         <div>
-          <a class="brand" href="/"> <%= appName %> </a>
+          <a class="brand" href="/">
+            <picture class="brand-mark-wrap">
+              <source srcset="/img/argus-logo.webp" type="image/webp" />
+              <img class="brand-mark" src="/img/argus-logo.png" alt="<%= appName %> logo" />
+            </picture>
+            <span><%= appName %></span>
+          </a>
           <p class="subtitle">Studio Xentradi Monitoring Console</p>
         </div>
 
