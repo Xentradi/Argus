@@ -5,6 +5,8 @@ npm-debug.log*
 .DS_Store
 local/
 img/
+!public/img/
+!public/img/argus.svg
 *.db
 *.db-shm
 *.db-wal

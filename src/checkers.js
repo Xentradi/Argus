@@ -33,6 +33,45 @@ function buildPingArgs(host, timeoutMs) {
   return ['-c', '1', '-W', String(timeoutSeconds), host];
 }
 
+function summarizePingFailure(output) {
+  const text = String(output || '').trim();
+  if (!text) {
+    return null;
+  }
+
+  const unresolvedHostPattern =
+    /unknown host|name or service not known|temporary failure in name resolution|cannot resolve|could not find host/i;
+  if (unresolvedHostPattern.test(text)) {
+    return 'Ping failed: host is not resolvable';
+  }
+
+  const packetsMatch = text.match(/(\d+)\s+packets transmitted,\s*(\d+)\s+(?:packets\s+)?received/i);
+  if (packetsMatch) {
+    const sent = Number.parseInt(packetsMatch[1], 10);
+    const received = Number.parseInt(packetsMatch[2], 10);
+
+    if (Number.isFinite(sent) && Number.isFinite(received)) {
+      if (received === 0) {
+        return `Ping failed: 100% packet loss (0/${sent} replies)`;
+      }
+
+      if (received < sent) {
+        return `Ping unstable: ${sent - received}/${sent} packet loss`;
+      }
+    }
+  }
+
+  if (/timeout|timed out|request timeout/i.test(text)) {
+    return 'Ping failed: request timed out';
+  }
+
+  if (/destination host unreachable|network is unreachable/i.test(text)) {
+    return 'Ping failed: destination unreachable';
+  }
+
+  return null;
+}
+
 function runPingCheck(host, timeoutMs) {
   return new Promise((resolve) => {
     const startedAt = Date.now();
@@ -54,8 +93,8 @@ function runPingCheck(host, timeoutMs) {
         return;
       }
 
-      const output = [stdout, stderr].filter(Boolean).join(' ').trim();
-      let reason = output || error.message || 'Ping failed';
+      const output = [stdout, stderr].filter(Boolean).join('\n').trim();
+      let reason = summarizePingFailure(output) || output || error.message || 'Ping failed';
 
       if (error.code === 'ENOENT') {
         reason = 'ping command not found on uptime server';

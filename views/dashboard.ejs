@@ -50,6 +50,7 @@
         </thead>
         <tbody>
           <% group.monitors.forEach((monitor) => { %>
+          <% const hasUnconfirmedFailures = monitor.runtime.status === 'up' && Boolean(monitor.runtime.lastError); %>
           <tr>
             <td>
               <div class="cell-title"><%= monitor.name %></div>
@@ -58,7 +59,7 @@
             <td><%= monitor.checkType %></td>
             <td class="target"><%= monitorTarget(monitor) || '-' %></td>
             <td>
-              <span class="status <%= monitor.runtime.status %>"><%= monitor.runtime.status %></span>
+              <span class="status <%= monitor.runtime.status %>"><%= hasUnconfirmedFailures ? 'up (confirming)' : monitor.runtime.status %></span>
             </td>
             <td>
               <%= monitor.runtime.lastCheckAt ? new Date(monitor.runtime.lastCheckAt).toLocaleString() : 'Never' %>

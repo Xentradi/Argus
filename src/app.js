@@ -37,6 +37,12 @@ app.use(
 );
 app.use(express.urlencoded({ extended: false }));
 app.use('/public', express.static(path.join(__dirname, '..', 'public')));
+app.use('/img', express.static(path.join(__dirname, '..', 'img')));
+
+// Backward-compatible icon URL used in many webhook configs.
+app.get('/img/argus.jpg', (_req, res) => {
+  res.redirect(302, '/public/img/argus.svg');
+});
 
 const sessionDbDir = path.dirname(config.dbFile);
 const sessionDbFile = process.env.SESSION_DB_FILE || 'argus-sessions.sqlite';

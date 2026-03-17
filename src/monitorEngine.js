@@ -294,14 +294,25 @@ class MonitorEngine {
     });
 
     const openIncident = this.store.getOpenIncidentByMonitorId(monitor.id);
-    if (!openIncident) {
-      this.store.addIncident({
+    if (openIncident) {
+      this.store.addEvent({
         monitorId: monitor.id,
         monitorName: monitor.name,
-        startedAt: at,
-        downReason: result.reason || 'Confirmed failure after retries'
+        eventType: 'monitor_down_suppressed',
+        message: 'Suppressed duplicate down transition (incident already open)',
+        details: {
+          checkedAt: at
+        }
       });
+      return;
     }
+
+    this.store.addIncident({
+      monitorId: monitor.id,
+      monitorName: monitor.name,
+      startedAt: at,
+      downReason: result.reason || 'Confirmed failure after retries'
+    });
 
     this.store.addEvent({
       monitorId: monitor.id,
