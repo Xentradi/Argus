@@ -605,6 +605,32 @@ app.post('/monitors/:id/update', requireAuth, (req, res) => {
     return;
   }
 
+  // If a monitor is edited while in a down incident, suppress "recovery" alerts caused by config edits.
+  const openIncident = store.getOpenIncidentByMonitorId(updated.id);
+  if (openIncident) {
+    const endedAt = new Date().toISOString();
+    store.closeIncident(openIncident.id, {
+      endedAt,
+      recoveryReason: 'Monitor updated (recovery alert suppressed)'
+    });
+
+    store.updateMonitorRuntime(updated.id, {
+      status: 'unknown',
+      lastError: null,
+      nextCheckAt: null
+    });
+
+    store.addEvent({
+      monitorId: updated.id,
+      monitorName: updated.name,
+      eventType: 'monitor_edit_alert_suppressed',
+      message: 'Suppressed recovery alert because monitor was edited during an active incident',
+      details: {
+        previousIncidentId: openIncident.id
+      }
+    });
+  }
+
   store.addEvent({
     monitorId: updated.id,
     monitorName: updated.name,
