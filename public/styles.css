@@ -476,7 +476,7 @@ select:focus {
 .action-menu-list {
   position: absolute;
   right: 0;
-  top: calc(100% + 0.3rem);
+  bottom: calc(100% + 0.3rem);
   z-index: 20;
   min-width: 160px;
   border: 1px solid #cad8c0;
