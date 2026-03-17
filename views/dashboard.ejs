@@ -38,33 +38,32 @@
     <% groupedMonitors.forEach((group) => { %>
     <h3 class="group-title"><%= group.groupName %> <span>(<%= group.monitors.length %>)</span></h3>
     <div class="table-wrap">
-      <table>
+      <table class="monitor-table">
         <thead>
           <tr>
+            <th>Status</th>
+            <th>Host / Target</th>
             <th>Name</th>
             <th>Type</th>
-            <th>Target</th>
-            <th>Status</th>
             <th>Last Check</th>
             <th>Next Check</th>
             <th>Last Error</th>
-            <th>Order</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           <% group.monitors.forEach((monitor) => { %>
           <% const hasUnconfirmedFailures = monitor.runtime.status === 'up' && Boolean(monitor.runtime.lastError); %>
-          <tr>
-            <td>
-              <div class="cell-title"><%= monitor.name %></div>
-              <div class="cell-sub"><%= monitor.active ? 'Active' : 'Paused' %></div>
-            </td>
-            <td><%= monitor.checkType %></td>
-            <td class="target"><%= monitorTarget(monitor) || '-' %></td>
-            <td>
+          <tr class="monitor-row <%= monitor.runtime.status %>">
+            <td class="status-cell">
               <span class="status <%= monitor.runtime.status %>"><%= hasUnconfirmedFailures ? 'up (confirming)' : monitor.runtime.status %></span>
             </td>
+            <td class="target host-cell" title="<%= monitorTarget(monitor) || '-' %>"><%= monitorTarget(monitor) || '-' %></td>
+            <td>
+              <span class="cell-title"><%= monitor.name %></span>
+              <span class="monitor-chip <%= monitor.active ? 'active' : 'paused' %>"><%= monitor.active ? 'Active' : 'Paused' %></span>
+            </td>
+            <td><%= monitor.checkType %></td>
             <td>
               <% if (monitor.runtime.lastCheckAt) { %>
               <time class="js-local-time" datetime="<%= monitor.runtime.lastCheckAt %>" data-style="datetime"><%= monitor.runtime.lastCheckAt %></time>
@@ -79,29 +78,28 @@
               -
               <% } %>
             </td>
-            <td class="target"><%= monitor.runtime.lastError || '-' %></td>
-            <td>
-              <div class="row-actions">
-                <form action="/monitors/<%= monitor.id %>/move" method="post">
-                  <input type="hidden" name="direction" value="up" />
-                  <button class="button small muted" type="submit" aria-label="Move up">↑</button>
-                </form>
-                <form action="/monitors/<%= monitor.id %>/move" method="post">
-                  <input type="hidden" name="direction" value="down" />
-                  <button class="button small muted" type="submit" aria-label="Move down">↓</button>
-                </form>
-              </div>
-            </td>
-            <td>
-              <div class="row-actions">
-                <a class="button small muted" href="/monitors/<%= monitor.id %>/edit">Edit</a>
-                <form action="/monitors/<%= monitor.id %>/toggle" method="post">
-                  <button class="button small" type="submit"><%= monitor.active ? 'Pause' : 'Resume' %></button>
-                </form>
-                <form action="/monitors/<%= monitor.id %>/delete" method="post" onsubmit="return confirm('Delete this monitor?');">
-                  <button class="button small danger" type="submit">Delete</button>
-                </form>
-              </div>
+            <td class="target" title="<%= monitor.runtime.lastError || '-' %>"><%= monitor.runtime.lastError || '-' %></td>
+            <td class="actions-cell">
+              <details class="action-menu">
+                <summary class="button small muted">Actions</summary>
+                <div class="action-menu-list">
+                  <a class="action-menu-item" href="/monitors/<%= monitor.id %>/edit">Edit</a>
+                  <form action="/monitors/<%= monitor.id %>/move" method="post">
+                    <input type="hidden" name="direction" value="up" />
+                    <button class="action-menu-item" type="submit">Move Up</button>
+                  </form>
+                  <form action="/monitors/<%= monitor.id %>/move" method="post">
+                    <input type="hidden" name="direction" value="down" />
+                    <button class="action-menu-item" type="submit">Move Down</button>
+                  </form>
+                  <form action="/monitors/<%= monitor.id %>/toggle" method="post">
+                    <button class="action-menu-item" type="submit"><%= monitor.active ? 'Pause' : 'Resume' %></button>
+                  </form>
+                  <form action="/monitors/<%= monitor.id %>/delete" method="post" onsubmit="return confirm('Delete this monitor?');">
+                    <button class="action-menu-item danger" type="submit">Delete</button>
+                  </form>
+                </div>
+              </details>
             </td>
           </tr>
           <% }) %>
