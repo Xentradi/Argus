@@ -50,5 +50,6 @@ module.exports = {
   maxTimeoutMs: 120_000,
   retentionDays: parseIntEnv('RETENTION_DAYS', 1095, 30, 5000),
   webhookDisplayName: process.env.WEBHOOK_DISPLAY_NAME || 'Argus',
-  webhookIconUrl
+  webhookIconUrl,
+  alertTimezone: process.env.ALERT_TIMEZONE || 'Pacific/Honolulu'
 };

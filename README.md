@@ -137,6 +137,7 @@ pm2 startup
 - `WEBHOOK_PUBLIC_BASE_URL` (default: `http://127.0.0.1:<PORT>`)
 - `WEBHOOK_ICON_PATH` (default: `/img/argus.jpg`)
 - `WEBHOOK_ICON_URL` (default: empty)
+- `ALERT_TIMEZONE` (default: `Pacific/Honolulu`, i.e. GMT-10)
 - `SESSION_SECRET` (optional override; otherwise persisted in SQLite)
 - `SESSION_DB_FILE` (default: `argus-sessions.sqlite`, stored in the same directory as `DB_FILE`)
 

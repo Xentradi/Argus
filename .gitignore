@@ -7,6 +7,7 @@ local/
 img/
 !public/img/
 !public/img/argus.svg
+!public/img/argus.jpg
 *.db
 *.db-shm
 *.db-wal
