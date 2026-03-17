@@ -100,7 +100,6 @@ class DataStore {
 
       CREATE INDEX IF NOT EXISTS idx_incidents_started_at ON incidents(started_at);
       CREATE INDEX IF NOT EXISTS idx_incidents_monitor_open ON incidents(monitor_id, ended_at);
-      CREATE INDEX IF NOT EXISTS idx_monitors_group_order ON monitors(group_id, sort_order, created_at);
 
       CREATE TABLE IF NOT EXISTS events (
         id TEXT PRIMARY KEY,
@@ -121,6 +120,7 @@ class DataStore {
     this.migrateMonitorsGroupIdColumnIfNeeded();
     this.migrateMonitorsSortOrderColumnIfNeeded();
     this.migrateLegacyGroupsIfNeeded();
+    this.ensureMonitorIndexes();
   }
 
   migrateIncidentsTableIfNeeded() {
@@ -285,6 +285,10 @@ class DataStore {
     for (const groupName of legacyGroupNames) {
       migrateLegacyGroup(groupName);
     }
+  }
+
+  ensureMonitorIndexes() {
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_monitors_group_order ON monitors(group_id, sort_order, created_at)');
   }
 
   hasUsers() {
