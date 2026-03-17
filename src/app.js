@@ -249,6 +249,60 @@ function parseGroupForm(body) {
   };
 }
 
+function normalizeSlug(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function parseStatusPageForm(body) {
+  const errors = [];
+  const name = String(body.name || '').trim();
+  const slug = normalizeSlug(body.slug || body.name || '');
+
+  const selectedMonitorIds = Array.isArray(body.monitorIds)
+    ? body.monitorIds
+    : body.monitorIds
+      ? [body.monitorIds]
+      : [];
+  const monitorIds = selectedMonitorIds.map((id) => String(id || '').trim()).filter(Boolean);
+
+  if (!name) {
+    errors.push('Status page name is required.');
+  }
+
+  if (!slug) {
+    errors.push('Status page slug is required.');
+  } else if (!/^[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/.test(slug)) {
+    errors.push('Status page slug must be 1-80 characters and use lowercase letters, numbers, or dashes.');
+  }
+
+  if (monitorIds.length === 0) {
+    errors.push('Select at least one monitor.');
+  }
+
+  return {
+    errors,
+    payload: {
+      name,
+      slug,
+      monitorIds
+    }
+  };
+}
+
+function formatUptimePercent(ratio) {
+  if (!Number.isFinite(ratio)) {
+    return 'N/A';
+  }
+
+  const percent = Math.max(0, Math.min(100, ratio * 100));
+  return `${percent.toFixed(5)}%`;
+}
+
 app.use((req, res, next) => {
   res.locals.appName = config.appName;
   res.locals.flash = req.session.flash || null;
@@ -265,6 +319,34 @@ app.get('/healthz', (_req, res) => {
   res.status(200).json({
     ok: true,
     now: new Date().toISOString()
+  });
+});
+
+app.get('/status/:slug', (req, res) => {
+  const statusPage = store.getStatusPageBySlug(req.params.slug);
+  if (!statusPage) {
+    res.status(404).render('public-status-page', {
+      statusPage: null,
+      monitors: [],
+      uptimeGoalPercent: 99.999
+    });
+    return;
+  }
+
+  const monitors = statusPage.monitors.map((monitor) => {
+    const uptime = store.calculateMonitorUptimeStats(monitor.id);
+    return {
+      id: monitor.id,
+      name: monitor.name,
+      status: monitor.runtime.status || 'unknown',
+      uptimePercent: formatUptimePercent(uptime ? uptime.uptimeRatio : Number.NaN)
+    };
+  });
+
+  res.render('public-status-page', {
+    statusPage,
+    monitors,
+    uptimeGoalPercent: 99.999
   });
 });
 
@@ -902,6 +984,63 @@ app.post('/groups/:id/delete', requireAuth, (req, res) => {
 
   setFlash(req, 'success', 'Group deleted. Monitors were moved to ungrouped with inherited webhook settings.');
   res.redirect('/groups');
+});
+
+app.get('/status-pages', requireAuth, (req, res) => {
+  res.render('status-pages', {
+    statusPages: store.listStatusPages(),
+    monitors: store.listMonitors()
+  });
+});
+
+app.post('/status-pages', requireAuth, (req, res) => {
+  const { errors, payload } = parseStatusPageForm(req.body);
+  if (errors.length > 0) {
+    setFlash(req, 'error', errors.join(' '));
+    res.redirect('/status-pages');
+    return;
+  }
+
+  try {
+    const created = store.createStatusPage(payload);
+
+    store.addEvent({
+      eventType: 'status_page_created',
+      message: `Status page created: ${created.name}`,
+      details: {
+        statusPageId: created.id,
+        slug: created.slug,
+        monitorCount: created.monitorCount
+      }
+    });
+
+    setFlash(req, 'success', `Status page created: /status/${created.slug}`);
+    res.redirect('/status-pages');
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Failed to create status page.');
+    res.redirect('/status-pages');
+  }
+});
+
+app.post('/status-pages/:id/delete', requireAuth, (req, res) => {
+  const removed = store.deleteStatusPage(req.params.id);
+  if (!removed) {
+    setFlash(req, 'error', 'Status page not found.');
+    res.redirect('/status-pages');
+    return;
+  }
+
+  store.addEvent({
+    eventType: 'status_page_deleted',
+    message: `Status page deleted: ${removed.name}`,
+    details: {
+      statusPageId: removed.id,
+      slug: removed.slug
+    }
+  });
+
+  setFlash(req, 'success', 'Status page deleted.');
+  res.redirect('/status-pages');
 });
 
 app.use((error, _req, res, _next) => {

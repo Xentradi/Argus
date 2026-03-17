@@ -1,0 +1,112 @@
+<%- include('partials/layout-top', { title: 'Status Pages' }) %>
+
+<section class="card">
+  <h1>Public Status Pages</h1>
+  <p>Create a public page that shows only monitor status, name, and uptime percentage.</p>
+
+  <form method="post" action="/status-pages" class="form-grid two-col">
+    <label>
+      Page Name
+      <input type="text" name="name" placeholder="Customer-facing status" required />
+    </label>
+
+    <label>
+      Page Slug
+      <input type="text" name="slug" placeholder="customer-status" pattern="[a-z0-9-]+" required />
+    </label>
+
+    <fieldset class="full status-page-monitor-pick">
+      <legend>Monitors</legend>
+      <% if (monitors.length === 0) { %>
+      <p class="empty">Create monitors first.</p>
+      <% } else { %>
+      <div class="status-page-monitor-grid">
+        <% monitors.forEach((monitor) => { %>
+        <label class="status-page-monitor-option">
+          <input type="checkbox" name="monitorIds" value="<%= monitor.id %>" checked />
+          <span><%= monitor.name %> (<%= monitor.runtime.status %>)</span>
+        </label>
+        <% }) %>
+      </div>
+      <% } %>
+    </fieldset>
+
+    <div class="full row-actions">
+      <button class="button" type="submit" <%= monitors.length === 0 ? 'disabled' : '' %>>Create Status Page</button>
+      <a class="button muted" href="/">Back</a>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Existing Status Pages</h2>
+
+  <% if (statusPages.length === 0) { %>
+  <p class="empty">No status pages created yet.</p>
+  <% } else { %>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Slug</th>
+          <th>Monitors</th>
+          <th>Public URL</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% statusPages.forEach((page) => { %>
+        <tr>
+          <td><%= page.name %></td>
+          <td><code><%= page.slug %></code></td>
+          <td><%= page.monitorCount %></td>
+          <td><a href="/status/<%= page.slug %>" target="_blank" rel="noreferrer">/status/<%= page.slug %></a></td>
+          <td>
+            <div class="row-actions">
+              <a class="button small muted" href="/status/<%= page.slug %>" target="_blank" rel="noreferrer">Open</a>
+              <form method="post" action="/status-pages/<%= page.id %>/delete" onsubmit="return confirm('Delete this status page?');">
+                <button class="button small danger" type="submit">Delete</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</section>
+
+<script>
+  (function () {
+    const nameInput = document.querySelector('input[name="name"]');
+    const slugInput = document.querySelector('input[name="slug"]');
+    if (!nameInput || !slugInput) {
+      return;
+    }
+
+    function toSlug(value) {
+      return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+    }
+
+    nameInput.addEventListener('input', () => {
+      if (slugInput.dataset.manual === 'true') {
+        return;
+      }
+      slugInput.value = toSlug(nameInput.value);
+    });
+
+    slugInput.addEventListener('input', () => {
+      slugInput.dataset.manual = slugInput.value.trim() ? 'true' : 'false';
+      slugInput.value = toSlug(slugInput.value);
+    });
+  })();
+</script>
+
+<%- include('partials/layout-bottom') %>

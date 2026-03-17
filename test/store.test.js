@@ -151,3 +151,81 @@ test('pruneOldHistory removes old incidents and events based on retention', () =
   assert.equal(incidents.some((incident) => incident.id === oldIncident.id), false);
   assert.equal(events.some((event) => event.id === oldEvent.id), false);
 });
+
+test('status pages can be created, listed, fetched by slug, and deleted', () => {
+  const first = store.createMonitor({
+    name: 'API',
+    checkType: 'http',
+    url: 'https://example.com/api',
+    webhookType: 'slack',
+    webhookUrl: 'https://example.invalid/slack-webhook'
+  });
+  const second = store.createMonitor({
+    name: 'Worker',
+    checkType: 'ping',
+    host: '127.0.0.2',
+    webhookType: 'slack',
+    webhookUrl: 'https://example.invalid/slack-webhook'
+  });
+
+  const created = store.createStatusPage({
+    name: 'Public Production',
+    slug: 'production-status',
+    monitorIds: [first.id, first.id, second.id]
+  });
+
+  assert.equal(created.name, 'Public Production');
+  assert.equal(created.slug, 'production-status');
+  assert.equal(created.monitors.length, 2);
+
+  const listed = store.listStatusPages();
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].monitorCount, 2);
+
+  const bySlug = store.getStatusPageBySlug('PRODUCTION-STATUS');
+  assert.ok(bySlug);
+  assert.equal(bySlug.id, created.id);
+  assert.equal(bySlug.monitors.length, 2);
+
+  const removed = store.deleteStatusPage(created.id);
+  assert.ok(removed);
+  assert.equal(store.getStatusPageById(created.id), null);
+});
+
+test('calculateMonitorUptimeStats includes both closed and open incidents', () => {
+  const monitor = store.createMonitor({
+    name: 'Uptime',
+    checkType: 'http',
+    url: 'https://example.com/uptime',
+    webhookType: 'slack',
+    webhookUrl: 'https://example.invalid/slack-webhook'
+  });
+
+  const createdAt = '2026-01-01T00:00:00.000Z';
+  store.db.prepare('UPDATE monitors SET created_at = ?, updated_at = ? WHERE id = ?').run(createdAt, createdAt, monitor.id);
+
+  const closedIncident = store.addIncident({
+    monitorId: monitor.id,
+    monitorName: monitor.name,
+    startedAt: '2026-01-01T00:05:00.000Z',
+    downReason: 'closed'
+  });
+
+  store.closeIncident(closedIncident.id, {
+    endedAt: '2026-01-01T00:10:00.000Z',
+    recoveryReason: 'recovered'
+  });
+
+  store.addIncident({
+    monitorId: monitor.id,
+    monitorName: monitor.name,
+    startedAt: '2026-01-01T00:20:00.000Z',
+    downReason: 'open'
+  });
+
+  const stats = store.calculateMonitorUptimeStats(monitor.id, '2026-01-01T00:30:00.000Z');
+
+  assert.equal(stats.totalMs, 30 * 60 * 1000);
+  assert.equal(stats.downtimeMs, 15 * 60 * 1000);
+  assert.equal(stats.uptimeRatio, 0.5);
+});

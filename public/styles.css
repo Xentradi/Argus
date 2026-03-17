@@ -370,6 +370,38 @@ select:focus {
   min-width: 420px;
 }
 
+.status-page-monitor-pick {
+  border: 1px solid #cad6cc;
+  border-radius: 10px;
+  padding: 0.7rem;
+  margin: 0;
+}
+
+.status-page-monitor-pick legend {
+  padding: 0 0.3rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.status-page-monitor-grid {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.status-page-monitor-option {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--text-main);
+  font-size: 0.9rem;
+}
+
+.status-page-monitor-option input {
+  width: 16px;
+  height: 16px;
+}
+
 .monitor-table {
   min-width: 1160px;
   table-layout: fixed;
@@ -489,6 +521,14 @@ select:focus {
   width: 18px;
   height: 18px;
   margin: 0;
+}
+
+.public-status-table {
+  min-width: 560px;
+}
+
+.public-status-table .uptime-cell {
+  font-weight: 700;
 }
 
 .qr-block {

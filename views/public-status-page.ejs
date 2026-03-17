@@ -1,0 +1,49 @@
+<%- include('partials/layout-top', { title: statusPage ? statusPage.name : 'Status Page' }) %>
+
+<section class="card">
+  <% if (!statusPage) { %>
+  <h1>Status Page Not Found</h1>
+  <p>This status page link is invalid or no longer available.</p>
+  <% } else { %>
+  <h1><%= statusPage.name %></h1>
+  <p>Uptime goal: <strong><%= uptimeGoalPercent.toFixed(3) %>%</strong></p>
+
+  <% if (monitors.length === 0) { %>
+  <p class="empty">No monitors are assigned to this status page.</p>
+  <% } else { %>
+  <div class="table-wrap">
+    <table class="public-status-table">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>Name</th>
+          <th>Uptime</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% monitors.forEach((monitor) => { %>
+        <tr>
+          <td><span class="status <%= monitor.status %>"><%= monitor.status %></span></td>
+          <td><%= monitor.name %></td>
+          <td class="uptime-cell"><%= monitor.uptimePercent %></td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+  <% } %>
+</section>
+
+<script>
+  (function () {
+    const refreshMs = 30000;
+    setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        window.location.reload();
+      }
+    }, refreshMs);
+  })();
+</script>
+
+<%- include('partials/layout-bottom') %>

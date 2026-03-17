@@ -113,6 +113,27 @@ class DataStore {
 
       CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
       CREATE INDEX IF NOT EXISTS idx_events_monitor ON events(monitor_id);
+
+      CREATE TABLE IF NOT EXISTS status_pages (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS status_page_monitors (
+        status_page_id TEXT NOT NULL,
+        monitor_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (status_page_id, monitor_id),
+        FOREIGN KEY (status_page_id) REFERENCES status_pages(id) ON DELETE CASCADE,
+        FOREIGN KEY (monitor_id) REFERENCES monitors(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_status_pages_slug ON status_pages(slug);
+      CREATE INDEX IF NOT EXISTS idx_status_page_monitors_page ON status_page_monitors(status_page_id);
+      CREATE INDEX IF NOT EXISTS idx_status_page_monitors_monitor ON status_page_monitors(monitor_id);
     `);
 
     this.migrateIncidentsTableIfNeeded();
@@ -406,6 +427,16 @@ class DataStore {
     };
   }
 
+  rowToStatusPage(row) {
+    return {
+      id: row.id,
+      name: row.name,
+      slug: row.slug,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
   listGroups() {
     const rows = this.db
       .prepare(
@@ -425,6 +456,165 @@ class DataStore {
       .prepare('SELECT id, name, webhook_type, webhook_url, created_at, updated_at FROM monitor_groups WHERE id = ?')
       .get(id);
     return row ? this.rowToGroup(row) : null;
+  }
+
+  listStatusPages() {
+    const rows = this.db
+      .prepare(
+        `
+          SELECT sp.id, sp.name, sp.slug, sp.created_at, sp.updated_at, COUNT(spm.monitor_id) AS monitor_count
+          FROM status_pages sp
+          LEFT JOIN status_page_monitors spm ON spm.status_page_id = sp.id
+          GROUP BY sp.id
+          ORDER BY lower(sp.name) ASC, datetime(sp.created_at) ASC
+        `
+      )
+      .all();
+
+    return rows.map((row) => ({
+      ...this.rowToStatusPage(row),
+      monitorCount: Number(row.monitor_count || 0)
+    }));
+  }
+
+  listMonitorsForStatusPage(statusPageId) {
+    const rows = this.db
+      .prepare(
+        `
+          SELECT m.*
+          FROM status_page_monitors spm
+          INNER JOIN monitors m ON m.id = spm.monitor_id
+          WHERE spm.status_page_id = ?
+          ORDER BY
+            CASE WHEN m.group_id IS NULL THEN 1 ELSE 0 END ASC,
+            lower(m.group_name) ASC,
+            m.sort_order ASC,
+            lower(m.name) ASC,
+            datetime(m.created_at) ASC
+        `
+      )
+      .all(statusPageId);
+
+    return rows.map((row) => this.rowToMonitor(row));
+  }
+
+  getStatusPageById(id) {
+    const row = this.db.prepare('SELECT id, name, slug, created_at, updated_at FROM status_pages WHERE id = ?').get(id);
+    if (!row) {
+      return null;
+    }
+
+    const page = this.rowToStatusPage(row);
+    const monitors = this.listMonitorsForStatusPage(page.id);
+
+    return {
+      ...page,
+      monitors,
+      monitorCount: monitors.length
+    };
+  }
+
+  getStatusPageBySlug(slug) {
+    const normalizedSlug = String(slug || '').trim().toLowerCase();
+    if (!normalizedSlug) {
+      return null;
+    }
+
+    const row = this.db
+      .prepare('SELECT id, name, slug, created_at, updated_at FROM status_pages WHERE lower(slug) = lower(?) LIMIT 1')
+      .get(normalizedSlug);
+
+    if (!row) {
+      return null;
+    }
+
+    return this.getStatusPageById(row.id);
+  }
+
+  createStatusPage({ name, slug, monitorIds }) {
+    const trimmedName = String(name || '').trim();
+    const normalizedSlug = String(slug || '')
+      .trim()
+      .toLowerCase();
+
+    if (!trimmedName) {
+      throw new Error('Status page name is required.');
+    }
+
+    if (!normalizedSlug) {
+      throw new Error('Status page slug is required.');
+    }
+
+    const slugConflict = this.db
+      .prepare('SELECT id FROM status_pages WHERE lower(slug) = lower(?) LIMIT 1')
+      .get(normalizedSlug);
+    if (slugConflict) {
+      throw new Error('Status page slug already exists.');
+    }
+
+    const requestedMonitorIds = Array.from(
+      new Set((Array.isArray(monitorIds) ? monitorIds : []).map((id) => String(id || '').trim()).filter(Boolean))
+    );
+
+    if (requestedMonitorIds.length === 0) {
+      throw new Error('Select at least one monitor.');
+    }
+
+    const placeholders = requestedMonitorIds.map(() => '?').join(', ');
+    const monitorRows = this.db
+      .prepare(`SELECT id FROM monitors WHERE id IN (${placeholders})`)
+      .all(...requestedMonitorIds);
+    const validIds = new Set(monitorRows.map((row) => row.id));
+    const selectedMonitorIds = requestedMonitorIds.filter((id) => validIds.has(id));
+
+    if (selectedMonitorIds.length === 0) {
+      throw new Error('No valid monitors were selected.');
+    }
+
+    const now = nowIso();
+    const statusPage = {
+      id: crypto.randomUUID(),
+      name: trimmedName,
+      slug: normalizedSlug,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    const create = this.db.transaction(() => {
+      this.db
+        .prepare(
+          `
+            INSERT INTO status_pages (id, name, slug, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+          `
+        )
+        .run(statusPage.id, statusPage.name, statusPage.slug, statusPage.createdAt, statusPage.updatedAt);
+
+      const insertMonitor = this.db.prepare(
+        `
+          INSERT INTO status_page_monitors (status_page_id, monitor_id, created_at)
+          VALUES (?, ?, ?)
+        `
+      );
+
+      selectedMonitorIds.forEach((monitorId) => {
+        insertMonitor.run(statusPage.id, monitorId, now);
+      });
+    });
+
+    create();
+
+    return this.getStatusPageById(statusPage.id);
+  }
+
+  deleteStatusPage(id) {
+    const existing = this.getStatusPageById(id);
+    if (!existing) {
+      return null;
+    }
+
+    this.db.prepare('DELETE FROM status_pages WHERE id = ?').run(id);
+    return existing;
   }
 
   createGroup({ name, webhookType, webhookUrl }) {
@@ -1051,6 +1241,69 @@ class DataStore {
     }
 
     return this.closeIncident(incident.id, details);
+  }
+
+  calculateMonitorUptimeStats(monitorId, at = nowIso()) {
+    const monitor = this.getMonitorById(monitorId);
+    if (!monitor) {
+      return null;
+    }
+
+    const endMsRaw = new Date(at).getTime();
+    const endMs = Number.isFinite(endMsRaw) ? endMsRaw : Date.now();
+
+    const startMsRaw = new Date(monitor.createdAt).getTime();
+    const startMs = Number.isFinite(startMsRaw) ? Math.min(startMsRaw, endMs) : endMs;
+
+    const startIso = new Date(startMs).toISOString();
+    const endIso = new Date(endMs).toISOString();
+
+    const incidentRows = this.db
+      .prepare(
+        `
+          SELECT started_at, ended_at
+          FROM incidents
+          WHERE monitor_id = ?
+            AND datetime(started_at) <= datetime(?)
+            AND (ended_at IS NULL OR datetime(ended_at) >= datetime(?))
+          ORDER BY datetime(started_at) ASC
+        `
+      )
+      .all(monitorId, endIso, startIso);
+
+    let downtimeMs = 0;
+
+    for (const row of incidentRows) {
+      const incidentStartMs = new Date(row.started_at).getTime();
+      if (!Number.isFinite(incidentStartMs)) {
+        continue;
+      }
+
+      const incidentEndMsRaw = row.ended_at ? new Date(row.ended_at).getTime() : endMs;
+      const incidentEndMs = Number.isFinite(incidentEndMsRaw) ? incidentEndMsRaw : endMs;
+
+      const overlapStart = Math.max(startMs, incidentStartMs);
+      const overlapEnd = Math.min(endMs, incidentEndMs);
+      if (overlapEnd > overlapStart) {
+        downtimeMs += overlapEnd - overlapStart;
+      }
+    }
+
+    const totalMs = Math.max(0, endMs - startMs);
+    if (downtimeMs > totalMs) {
+      downtimeMs = totalMs;
+    }
+
+    const uptimeRatio = totalMs === 0 ? 1 : (totalMs - downtimeMs) / totalMs;
+
+    return {
+      monitorId,
+      windowStartAt: startIso,
+      windowEndAt: endIso,
+      totalMs,
+      downtimeMs,
+      uptimeRatio
+    };
   }
 
   addEvent({ monitorId = null, monitorName = null, eventType, message, details = null }) {
