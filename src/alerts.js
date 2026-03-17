@@ -22,41 +22,15 @@ function formatDuration(totalSeconds) {
   return parts.join(' ');
 }
 
+function monitorTarget(monitor) {
+  return monitor.checkType === 'ping' ? monitor.host : monitor.url;
+}
+
 function buildAlertMessage(monitor, payload) {
-  const lines = [];
-
-  if (payload.type === 'down') {
-    lines.push(`[DOWN] ${monitor.name}`);
-    lines.push(`Check type: ${monitor.checkType}`);
-    lines.push(`Target: ${monitor.checkType === 'ping' ? monitor.host : monitor.url}`);
-    lines.push(`Time: ${payload.at}`);
-    lines.push(`Reason: ${payload.reason || 'Unknown failure'}`);
-  } else if (payload.type === 'recovery') {
-    lines.push(`[RECOVERY] ${monitor.name}`);
-    lines.push(`Check type: ${monitor.checkType}`);
-    lines.push(`Target: ${monitor.checkType === 'ping' ? monitor.host : monitor.url}`);
-    lines.push(`Time: ${payload.at}`);
-    lines.push(`Downtime: ${formatDuration(payload.durationSeconds)}`);
-    lines.push(`Recovery check: ${payload.reason || 'Confirmed healthy'}`);
-  } else {
-    lines.push(`[STATUS] ${monitor.name}`);
-    lines.push(`Check type: ${monitor.checkType}`);
-    lines.push(`Target: ${monitor.checkType === 'ping' ? monitor.host : monitor.url}`);
-    lines.push(`Time: ${payload.at}`);
-    lines.push(`Current status: ${String(payload.status || monitor.runtime?.status || 'unknown').toUpperCase()}`);
-
-    if (payload.lastCheckAt) {
-      lines.push(`Last check: ${payload.lastCheckAt}`);
-    }
-
-    if (payload.reason) {
-      lines.push(`Last error: ${payload.reason}`);
-    }
-
-    lines.push(`Triggered by: ${payload.trigger || 'manual'}`);
-  }
-
-  return lines.join('\n');
+  const presentation = resolveAlertPresentation(monitor, payload);
+  const at = formatAlertTimestamp(payload.at);
+  const target = monitorTarget(monitor) || '-';
+  return `${presentation.statusLabel} - ${monitor.name} - ${presentation.timeLabel} ${at} - ${target}`;
 }
 
 function formatAlertTimestamp(isoTime) {
@@ -92,52 +66,55 @@ function resolveAlertPresentation(monitor, payload) {
 
   if (payload.type === 'down') {
     return {
-      title: `DOWN • ${monitor.name}`,
+      title: `*DOWN* - ${monitor.name}`,
       colorHex: '#dc2626',
-      statusLabel: 'DOWN'
+      statusLabel: 'DOWN',
+      timeLabel: 'Down at'
     };
   }
 
   if (payload.type === 'recovery') {
     return {
-      title: `RECOVERY • ${monitor.name}`,
+      title: `*UP* - ${monitor.name}`,
       colorHex: '#16a34a',
-      statusLabel: 'UP'
+      statusLabel: 'UP',
+      timeLabel: 'Up as of'
     };
   }
 
   if (status === 'down') {
     return {
-      title: `STATUS • ${monitor.name}`,
+      title: `*DOWN* - ${monitor.name}`,
       colorHex: '#dc2626',
-      statusLabel: 'DOWN'
+      statusLabel: 'DOWN',
+      timeLabel: 'Down at'
     };
   }
 
   if (status === 'up') {
     return {
-      title: `STATUS • ${monitor.name}`,
+      title: `*UP* - ${monitor.name}`,
       colorHex: '#16a34a',
-      statusLabel: 'UP'
+      statusLabel: 'UP',
+      timeLabel: 'Up as of'
     };
   }
 
   return {
-    title: `STATUS • ${monitor.name}`,
+    title: `*STATUS* - ${monitor.name}`,
     colorHex: '#64748b',
-    statusLabel: (status || 'unknown').toUpperCase()
+    statusLabel: (status || 'unknown').toUpperCase(),
+    timeLabel: 'Status as of'
   };
 }
 
 function buildAlertFields(monitor, payload) {
   const formattedTime = formatAlertTimestamp(payload.at);
-  const target = monitor.checkType === 'ping' ? monitor.host : monitor.url;
+  const target = monitorTarget(monitor);
   const presentation = resolveAlertPresentation(monitor, payload);
   const fields = [
-    { name: 'Status', value: presentation.statusLabel, inline: true },
-    { name: 'Check Type', value: monitor.checkType, inline: true },
     { name: 'Target', value: target || '-', inline: false },
-    { name: 'Time', value: formattedTime, inline: false }
+    { name: presentation.timeLabel, value: formattedTime, inline: false }
   ];
 
   if (payload.type === 'recovery') {
@@ -148,27 +125,11 @@ function buildAlertFields(monitor, payload) {
     });
   }
 
-  if (payload.lastCheckAt) {
-    fields.push({
-      name: 'Last Check',
-      value: formatAlertTimestamp(payload.lastCheckAt),
-      inline: false
-    });
-  }
-
   if (payload.reason) {
     fields.push({
-      name: payload.type === 'down' ? 'Reason' : 'Details',
+      name: payload.type === 'down' ? 'Error' : 'Details',
       value: payload.reason,
       inline: false
-    });
-  }
-
-  if (payload.trigger) {
-    fields.push({
-      name: 'Triggered By',
-      value: payload.trigger,
-      inline: true
     });
   }
 
@@ -199,16 +160,14 @@ function buildWebhookBodyWithAlert(webhookType, text, monitor, payload) {
   const fields = monitor && payload ? buildAlertFields(monitor, payload) : [];
 
   if (webhookType === 'discord') {
-    const body = {
-      content: text,
-      ...common
-    };
+    const body = { ...common };
 
     if (presentation) {
       body.embeds = [
         {
           title: presentation.title,
           color: hexToDiscordColor(presentation.colorHex),
+          description: `**${presentation.statusLabel}**`,
           fields: fields.map((field) => ({
             name: field.name,
             value: field.value || '-',
@@ -219,6 +178,8 @@ function buildWebhookBodyWithAlert(webhookType, text, monitor, payload) {
           }
         }
       ];
+    } else {
+      body.content = text;
     }
 
     if (config.webhookIconUrl) {
@@ -229,7 +190,7 @@ function buildWebhookBodyWithAlert(webhookType, text, monitor, payload) {
   }
 
   const body = {
-    text,
+    text: presentation ? `${presentation.statusLabel}: ${monitor.name}` : text,
     ...common
   };
 

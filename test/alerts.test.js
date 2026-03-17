@@ -45,14 +45,10 @@ test('status alert message includes current monitor state', () => {
       type: 'status',
       at: '2026-03-17T03:15:00.000Z',
       status: 'down',
-      lastCheckAt: '2026-03-17T03:14:45.000Z',
-      reason: 'Ping failed: 100% packet loss',
-      trigger: 'manual monitor alert'
+      reason: 'Ping failed: 100% packet loss'
     }
   );
 
-  assert.match(message, /\[STATUS\] Gateway/);
-  assert.match(message, /Current status: DOWN/);
-  assert.match(message, /Last check: 2026-03-17T03:14:45.000Z/);
-  assert.match(message, /Triggered by: manual monitor alert/);
+  assert.match(message, /^DOWN - Gateway - Down at /);
+  assert.match(message, /203.0.113.10/);
 });
