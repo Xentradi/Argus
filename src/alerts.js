@@ -116,9 +116,15 @@ function buildAlertLines(monitor, payload, presentation) {
   const target = monitorTarget(monitor);
   const lines = [
     `${presentation.emoji} *${presentation.statusLabel}* ${monitor.name}`,
-    `*Host:* ${target || '-'}`,
-    `*${presentation.timeLabel}:* ${formattedTime}`
+    `*Host:* ${target || '-'}`
   ];
+
+  if (payload.type === 'recovery' && payload.downAt) {
+    lines.push(`*Down at:* ${formatAlertTimestamp(payload.downAt)}`);
+    lines.push(`*Up as of:* ${formattedTime}`);
+  } else {
+    lines.push(`*${presentation.timeLabel}:* ${formattedTime}`);
+  }
 
   if (payload.type === 'recovery') {
     lines.push(`*Downtime:* ${formatDuration(payload.durationSeconds)}`);

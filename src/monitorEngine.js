@@ -395,6 +395,7 @@ class MonitorEngine {
     const alertResult = await sendWebhookAlert(currentMonitor, {
       type: 'recovery',
       at,
+      downAt: closedIncident ? closedIncident.startedAt : null,
       durationSeconds: closedIncident ? closedIncident.durationSeconds : null,
       reason: 'Confirmed recovery after retries'
     });
