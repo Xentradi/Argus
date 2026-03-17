@@ -509,6 +509,15 @@ textarea:focus {
   background: rgba(61, 220, 255, 0.05);
 }
 
+.monitor-row {
+  cursor: pointer;
+}
+
+.monitor-row[data-expanded='true'] {
+  outline: 1px solid rgba(61, 220, 255, 0.4);
+  outline-offset: -1px;
+}
+
 .monitor-table .actions-cell {
   overflow: visible;
   width: 124px;
@@ -640,7 +649,6 @@ textarea:focus {
   background: transparent;
   color: inherit;
   font: inherit;
-  cursor: pointer;
 }
 
 .monitor-expand:hover .cell-title {
@@ -664,6 +672,10 @@ textarea:focus {
   justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.5rem;
+}
+
+.monitor-panel-actions {
+  margin-bottom: 0.6rem;
 }
 
 .monitor-incidents-wrap table {

@@ -89,7 +89,7 @@
               <th>Next Check</th>
               <th>Outage</th>
               <th>Last Error</th>
-              <th>Actions</th>
+              <th>Details</th>
             </tr>
           </thead>
           <tbody>
@@ -100,16 +100,10 @@
                 <span class="status <%= monitor.runtime.status %>" data-field="status"><%= monitor.hasUnconfirmedFailures ? 'up (confirming)' : monitor.runtime.status %></span>
               </td>
               <td>
-                <button
-                  class="monitor-expand"
-                  type="button"
-                  data-toggle-incidents="<%= monitor.id %>"
-                  aria-expanded="false"
-                  aria-controls="monitor-incidents-<%= monitor.id %>"
-                >
+                <span class="monitor-expand">
                   <span class="cell-title" data-field="name"><%= monitor.name %></span>
                   <span class="monitor-chip <%= monitor.active ? 'active' : 'paused' %>" data-field="active-chip"><%= monitor.active ? 'Active' : 'Paused' %></span>
-                </button>
+                </span>
               </td>
               <td class="target host-cell" data-field="target" title="<%= monitor.target %>"><%= monitor.target %></td>
               <td data-field="check-type"><%= monitor.checkType %></td>
@@ -139,29 +133,7 @@
               </td>
               <td class="target" data-field="last-error" title="<%= monitor.runtime.lastError || '-' %>"><%= monitor.runtime.lastError || '-' %></td>
               <td class="actions-cell">
-                <details class="action-menu">
-                  <summary class="button small muted">Actions</summary>
-                  <div class="action-menu-list">
-                    <form action="/monitors/<%= monitor.id %>/alert" method="post">
-                      <button class="action-menu-item" type="submit">Alert Monitor</button>
-                    </form>
-                    <a class="action-menu-item" href="/monitors/<%= monitor.id %>/edit">Edit</a>
-                    <form action="/monitors/<%= monitor.id %>/move" method="post">
-                      <input type="hidden" name="direction" value="up" />
-                      <button class="action-menu-item" type="submit">Move Up</button>
-                    </form>
-                    <form action="/monitors/<%= monitor.id %>/move" method="post">
-                      <input type="hidden" name="direction" value="down" />
-                      <button class="action-menu-item" type="submit">Move Down</button>
-                    </form>
-                    <form action="/monitors/<%= monitor.id %>/toggle" method="post">
-                      <button class="action-menu-item" type="submit" data-field="toggle-label"><%= monitor.active ? 'Pause' : 'Resume' %></button>
-                    </form>
-                    <form action="/monitors/<%= monitor.id %>/delete" method="post" onsubmit="return confirm('Delete this monitor?');">
-                      <button class="action-menu-item danger" type="submit">Delete</button>
-                    </form>
-                  </div>
-                </details>
+                <span class="cell-sub" data-field="details-hint">Click row</span>
               </td>
             </tr>
             <tr class="monitor-incidents-row" id="monitor-incidents-<%= monitor.id %>" data-incidents-row-for="<%= monitor.id %>" hidden>
@@ -170,6 +142,26 @@
                   <div class="monitor-incidents-head">
                     <strong>Incident History for <%= monitor.name %></strong>
                     <span class="cell-sub"><%= incidentsForMonitor.length %> shown</span>
+                  </div>
+                  <div class="row-actions monitor-panel-actions">
+                    <form action="/monitors/<%= monitor.id %>/alert" method="post">
+                      <button class="button small muted" type="submit">Alert</button>
+                    </form>
+                    <a class="button small muted" href="/monitors/<%= monitor.id %>/edit">Edit</a>
+                    <form action="/monitors/<%= monitor.id %>/move" method="post">
+                      <input type="hidden" name="direction" value="up" />
+                      <button class="button small muted" type="submit">Move Up</button>
+                    </form>
+                    <form action="/monitors/<%= monitor.id %>/move" method="post">
+                      <input type="hidden" name="direction" value="down" />
+                      <button class="button small muted" type="submit">Move Down</button>
+                    </form>
+                    <form action="/monitors/<%= monitor.id %>/toggle" method="post">
+                      <button class="button small muted" type="submit" data-field="toggle-label"><%= monitor.active ? 'Pause' : 'Resume' %></button>
+                    </form>
+                    <form action="/monitors/<%= monitor.id %>/delete" method="post" onsubmit="return confirm('Delete this monitor?');">
+                      <button class="button small danger" type="submit">Delete</button>
+                    </form>
                   </div>
                   <% if (incidentsForMonitor.length === 0) { %>
                   <p class="empty">No incidents recorded for this monitor.</p>
@@ -381,24 +373,33 @@
 
     function bindIncidentExpanders() {
       document.addEventListener('click', (event) => {
-        const trigger = event.target.closest('[data-toggle-incidents]');
-        if (!trigger) {
-          return;
-        }
-
-        const monitorId = trigger.getAttribute('data-toggle-incidents');
-        if (!monitorId) {
-          return;
-        }
-
-        const row = document.querySelector(`[data-incidents-row-for="${monitorId}"]`);
+        const row = event.target.closest('tr[data-monitor-id]');
         if (!row) {
           return;
         }
 
-        const nextState = row.hasAttribute('hidden');
-        row.toggleAttribute('hidden', !nextState);
-        trigger.setAttribute('aria-expanded', nextState ? 'true' : 'false');
+        if (event.target.closest('a, button, summary, details, input, select, textarea, label, form')) {
+          return;
+        }
+
+        const monitorId = row.getAttribute('data-monitor-id');
+        if (!monitorId) {
+          return;
+        }
+
+        const incidentsRow = document.querySelector(`[data-incidents-row-for="${monitorId}"]`);
+        if (!incidentsRow) {
+          return;
+        }
+
+        const nextState = incidentsRow.hasAttribute('hidden');
+        incidentsRow.toggleAttribute('hidden', !nextState);
+        row.setAttribute('data-expanded', nextState ? 'true' : 'false');
+
+        const hint = row.querySelector('[data-field="details-hint"]');
+        if (hint) {
+          hint.textContent = nextState ? 'Expanded' : 'Click row';
+        }
       });
     }
 
@@ -476,7 +477,8 @@
         activeChip.textContent = monitor.active ? 'Active' : 'Paused';
       }
 
-      const toggleLabel = row.querySelector('[data-field="toggle-label"]');
+      const incidentsRow = document.querySelector(`[data-incidents-row-for="${monitor.id}"]`);
+      const toggleLabel = incidentsRow ? incidentsRow.querySelector('[data-field="toggle-label"]') : null;
       if (toggleLabel) {
         toggleLabel.textContent = monitor.active ? 'Pause' : 'Resume';
       }
