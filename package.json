@@ -28,5 +28,9 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.9"
+  },
+  "overrides": {
+    "tar": "^7.5.11",
+    "@tootallnate/once": "^3.0.1"
   }
 }

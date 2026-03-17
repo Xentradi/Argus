@@ -384,11 +384,11 @@ app.post(
     }
 
     const username = String(req.body.username || '').trim();
-    const password = String(req.body.password || '');
+    const submittedPassword = String(req.body.password || '');
     const otpCode = String(req.body.otpCode || '').replace(/\s+/g, '');
 
-    if (!username || !password || !otpCode) {
-      setFlash(req, 'error', 'Username, password, and TOTP code are required.');
+    if (!username || !submittedPassword || !otpCode) {
+      setFlash(req, 'error', 'All setup fields are required.');
       res.redirect('/setup');
       return;
     }
@@ -412,7 +412,7 @@ app.post(
       return;
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);
+    const passwordHash = await bcrypt.hash(submittedPassword, 12);
 
     store.createUser({
       username,
@@ -450,7 +450,7 @@ app.post(
     }
 
     const username = String(req.body.username || '').trim();
-    const password = String(req.body.password || '');
+    const submittedPassword = String(req.body.password || '');
 
     const user = store.findUserByUsername(username);
     if (!user) {
@@ -459,7 +459,7 @@ app.post(
       return;
     }
 
-    const validPassword = await bcrypt.compare(password, user.passwordHash);
+    const validPassword = await bcrypt.compare(submittedPassword, user.passwordHash);
     if (!validPassword) {
       setFlash(req, 'error', 'Invalid username or password.');
       res.redirect('/login');
