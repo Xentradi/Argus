@@ -120,17 +120,13 @@ function parseMonitorForm(body, existing = null) {
 
   const checkType = safeLower(body.checkType);
   const name = String(body.name || '').trim();
-  const groupName = String(body.groupName || '').trim() || 'Default';
+  const groupId = String(body.groupId || '').trim() || null;
   const host = String(body.host || '').trim();
   const url = normalizeUrl(body.url);
   const keyword = String(body.keyword || '').trim();
 
   if (!name) {
     errors.push('Name is required.');
-  }
-
-  if (groupName.length > 120) {
-    errors.push('Group name must be 120 characters or less.');
   }
 
   if (!['ping', 'http', 'keyword'].includes(checkType)) {
@@ -151,14 +147,32 @@ function parseMonitorForm(body, existing = null) {
     errors.push('Keyword is required for keyword checks.');
   }
 
-  const webhookType = safeLower(body.webhookType);
-  if (!['slack', 'discord'].includes(webhookType)) {
-    errors.push('Webhook type must be Slack or Discord.');
+  let selectedGroup = null;
+  if (groupId) {
+    selectedGroup = store.getGroupById(groupId);
+    if (!selectedGroup) {
+      errors.push('Selected group was not found.');
+    }
   }
 
-  const webhookUrl = normalizeUrl(body.webhookUrl);
-  if (!webhookUrl || !isLikelyUrl(webhookUrl)) {
-    errors.push('A valid webhook URL is required.');
+  let webhookType = '';
+  let webhookUrl = '';
+  let groupName = '';
+
+  if (selectedGroup) {
+    webhookType = selectedGroup.webhookType;
+    webhookUrl = selectedGroup.webhookUrl;
+    groupName = selectedGroup.name;
+  } else {
+    webhookType = safeLower(body.webhookType);
+    if (!['slack', 'discord'].includes(webhookType)) {
+      errors.push('Webhook type must be Slack or Discord.');
+    }
+
+    webhookUrl = normalizeUrl(body.webhookUrl);
+    if (!webhookUrl || !isLikelyUrl(webhookUrl)) {
+      errors.push('A valid webhook URL is required for ungrouped monitors.');
+    }
   }
 
   const timeoutMs = clampNumber(
@@ -170,6 +184,7 @@ function parseMonitorForm(body, existing = null) {
 
   const monitorPayload = {
     name,
+    groupId,
     groupName,
     checkType,
     host,
@@ -187,6 +202,38 @@ function parseMonitorForm(body, existing = null) {
   return {
     errors,
     monitorPayload
+  };
+}
+
+function parseGroupForm(body) {
+  const errors = [];
+  const name = String(body.name || '').trim();
+  const webhookType = safeLower(body.webhookType);
+  const webhookUrl = normalizeUrl(body.webhookUrl);
+
+  if (!name) {
+    errors.push('Group name is required.');
+  }
+
+  if (name.length > 120) {
+    errors.push('Group name must be 120 characters or less.');
+  }
+
+  if (!['slack', 'discord'].includes(webhookType)) {
+    errors.push('Webhook type must be Slack or Discord.');
+  }
+
+  if (!webhookUrl || !isLikelyUrl(webhookUrl)) {
+    errors.push('A valid webhook URL is required.');
+  }
+
+  return {
+    errors,
+    payload: {
+      name,
+      webhookType,
+      webhookUrl
+    }
   };
 }
 
@@ -385,25 +432,53 @@ app.post('/logout', (req, res) => {
 app.get(
   '/',
   requireAuth,
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
     const monitors = store.listMonitors();
+    const groups = store.listGroups();
     const incidents = store.listIncidents(250);
-    const events = store.listEvents(250);
+    const requestedEventsPage = clampNumber(req.query.eventsPage, 1, 1000000, 1);
+    const eventsPerPage = 20;
+    const totalEvents = store.countEvents();
+    const totalEventPages = Math.max(1, Math.ceil(totalEvents / eventsPerPage));
+    const eventsPage = Math.min(requestedEventsPage, totalEventPages);
+    const eventsOffset = (eventsPage - 1) * eventsPerPage;
+    const events = store.listEvents(eventsPerPage, eventsOffset);
+    const groupsById = new Map(groups.map((group) => [group.id, group]));
     const groupedMap = new Map();
 
     for (const monitor of monitors) {
-      const groupName = monitor.groupName || 'Default';
-      if (!groupedMap.has(groupName)) {
-        groupedMap.set(groupName, []);
+      const effectiveGroup = monitor.groupId ? groupsById.get(monitor.groupId) : null;
+      const bucketKey = effectiveGroup ? effectiveGroup.id : 'ungrouped';
+      const bucketName = effectiveGroup ? effectiveGroup.name : 'Ungrouped';
+
+      if (!groupedMap.has(bucketKey)) {
+        groupedMap.set(bucketKey, {
+          groupId: effectiveGroup ? effectiveGroup.id : null,
+          groupName: bucketName,
+          monitors: []
+        });
       }
-      groupedMap.get(groupName).push(monitor);
+      groupedMap.get(bucketKey).monitors.push(monitor);
     }
 
-    const groupedMonitors = Array.from(groupedMap.entries())
-      .sort((left, right) => left[0].localeCompare(right[0]))
-      .map(([groupName, groupMonitors]) => ({
-        groupName,
-        monitors: groupMonitors.slice().sort((left, right) => left.name.localeCompare(right.name))
+    const groupedMonitors = Array.from(groupedMap.values())
+      .sort((left, right) => {
+        if (!left.groupId && right.groupId) {
+          return 1;
+        }
+        if (left.groupId && !right.groupId) {
+          return -1;
+        }
+        return left.groupName.localeCompare(right.groupName);
+      })
+      .map((group) => ({
+        ...group,
+        monitors: group.monitors
+          .slice()
+          .sort(
+            (left, right) =>
+              (left.sortOrder || 0) - (right.sortOrder || 0) || left.name.localeCompare(right.name)
+          )
       }));
 
     const summary = {
@@ -419,17 +494,26 @@ app.get(
       incidents,
       events,
       summary,
-      monitorTarget
+      monitorTarget,
+      eventPagination: {
+        page: eventsPage,
+        totalPages: totalEventPages,
+        hasPrev: eventsPage > 1,
+        hasNext: eventsPage < totalEventPages
+      }
     });
   })
 );
 
 app.get('/monitors/new', requireAuth, (req, res) => {
+  const groups = store.listGroups();
   res.render('monitor-form', {
     editing: false,
+    groups,
     monitor: {
       name: '',
-      groupName: 'Default',
+      groupId: '',
+      groupName: '',
       checkType: 'http',
       host: '',
       url: '',
@@ -472,6 +556,7 @@ app.post('/monitors', requireAuth, (req, res) => {
 });
 
 app.get('/monitors/:id/edit', requireAuth, (req, res) => {
+  const groups = store.listGroups();
   const monitor = store.getMonitorById(req.params.id);
   if (!monitor) {
     setFlash(req, 'error', 'Monitor not found.');
@@ -481,6 +566,7 @@ app.get('/monitors/:id/edit', requireAuth, (req, res) => {
 
   res.render('monitor-form', {
     editing: true,
+    groups,
     monitor
   });
 });
@@ -574,6 +660,114 @@ app.post('/monitors/:id/delete', requireAuth, (req, res) => {
 
   setFlash(req, 'success', 'Monitor deleted.');
   res.redirect('/');
+});
+
+app.post('/monitors/:id/move', requireAuth, (req, res) => {
+  const direction = req.body.direction === 'up' ? 'up' : 'down';
+  const moved = store.moveMonitorInGroup(req.params.id, direction);
+  if (!moved) {
+    setFlash(req, 'error', 'Monitor not found.');
+    res.redirect('/');
+    return;
+  }
+
+  store.addEvent({
+    monitorId: moved.id,
+    monitorName: moved.name,
+    eventType: 'monitor_reordered',
+    message: `Monitor moved ${direction}`,
+    details: {
+      sortOrder: moved.sortOrder
+    }
+  });
+
+  setFlash(req, 'success', `Monitor moved ${direction}.`);
+  res.redirect('/');
+});
+
+app.get('/groups', requireAuth, (req, res) => {
+  res.render('groups', {
+    groups: store.listGroups()
+  });
+});
+
+app.post('/groups', requireAuth, (req, res) => {
+  const { errors, payload } = parseGroupForm(req.body);
+  if (errors.length > 0) {
+    setFlash(req, 'error', errors.join(' '));
+    res.redirect('/groups');
+    return;
+  }
+
+  try {
+    const created = store.createGroup(payload);
+    store.addEvent({
+      eventType: 'group_created',
+      message: `Group created: ${created.name}`,
+      details: {
+        groupId: created.id
+      }
+    });
+
+    setFlash(req, 'success', 'Group created.');
+    res.redirect('/groups');
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Failed to create group.');
+    res.redirect('/groups');
+  }
+});
+
+app.post('/groups/:id/update', requireAuth, (req, res) => {
+  const existing = store.getGroupById(req.params.id);
+  if (!existing) {
+    setFlash(req, 'error', 'Group not found.');
+    res.redirect('/groups');
+    return;
+  }
+
+  const { errors, payload } = parseGroupForm(req.body);
+  if (errors.length > 0) {
+    setFlash(req, 'error', errors.join(' '));
+    res.redirect('/groups');
+    return;
+  }
+
+  try {
+    const updated = store.updateGroup(req.params.id, payload);
+    store.addEvent({
+      eventType: 'group_updated',
+      message: `Group updated: ${updated.name}`,
+      details: {
+        groupId: updated.id
+      }
+    });
+
+    setFlash(req, 'success', 'Group updated.');
+    res.redirect('/groups');
+  } catch (error) {
+    setFlash(req, 'error', error.message || 'Failed to update group.');
+    res.redirect('/groups');
+  }
+});
+
+app.post('/groups/:id/delete', requireAuth, (req, res) => {
+  const removed = store.deleteGroup(req.params.id);
+  if (!removed) {
+    setFlash(req, 'error', 'Group not found.');
+    res.redirect('/groups');
+    return;
+  }
+
+  store.addEvent({
+    eventType: 'group_deleted',
+    message: `Group deleted: ${removed.name}`,
+    details: {
+      groupId: removed.id
+    }
+  });
+
+  setFlash(req, 'success', 'Group deleted. Monitors were moved to ungrouped with inherited webhook settings.');
+  res.redirect('/groups');
 });
 
 app.use((error, _req, res, _next) => {

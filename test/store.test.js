@@ -21,7 +21,7 @@ afterEach(() => {
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
-test('createMonitor defaults to group "Default" and HTTP mode "2xx"', () => {
+test('createMonitor defaults to ungrouped and HTTP mode "2xx"', () => {
   const created = store.createMonitor({
     name: 'Website',
     checkType: 'http',
@@ -30,30 +30,81 @@ test('createMonitor defaults to group "Default" and HTTP mode "2xx"', () => {
     webhookUrl: 'https://example.invalid/slack-webhook'
   });
 
-  assert.equal(created.groupName, 'Default');
+  assert.equal(created.groupId, null);
+  assert.equal(created.groupName, '');
   assert.equal(created.httpStatusMode, '2xx');
 
   const loaded = store.getMonitorById(created.id);
-  assert.equal(loaded.groupName, 'Default');
+  assert.equal(loaded.groupId, null);
+  assert.equal(loaded.groupName, '');
   assert.equal(loaded.httpStatusMode, '2xx');
 });
 
-test('updateMonitor persists group changes', () => {
-  const created = store.createMonitor({
-    name: 'Gateway',
-    checkType: 'ping',
-    host: '127.0.0.1',
-    groupName: 'Company A',
+test('group updates propagate webhook settings to group monitors', () => {
+  const group = store.createGroup({
+    name: 'Company A',
     webhookType: 'discord',
     webhookUrl: 'https://example.invalid/discord-webhook'
   });
 
-  const updated = store.updateMonitor(created.id, {
-    groupName: 'Company B'
+  const created = store.createMonitor({
+    name: 'Gateway',
+    checkType: 'ping',
+    host: '127.0.0.1',
+    groupId: group.id,
+    groupName: group.name,
+    webhookType: group.webhookType,
+    webhookUrl: group.webhookUrl
   });
 
-  assert.equal(updated.groupName, 'Company B');
-  assert.equal(store.getMonitorById(created.id).groupName, 'Company B');
+  const updatedGroup = store.updateGroup(group.id, {
+    name: 'Company B',
+    webhookType: 'slack',
+    webhookUrl: 'https://example.invalid/slack-webhook'
+  });
+
+  assert.equal(updatedGroup.name, 'Company B');
+
+  const loaded = store.getMonitorById(created.id);
+  assert.equal(loaded.groupName, 'Company B');
+  assert.equal(loaded.webhookType, 'slack');
+  assert.equal(loaded.webhookUrl, 'https://example.invalid/slack-webhook');
+});
+
+test('moveMonitorInGroup swaps ordering within its group', () => {
+  const group = store.createGroup({
+    name: 'Ops',
+    webhookType: 'slack',
+    webhookUrl: 'https://example.invalid/ops-webhook'
+  });
+
+  const alpha = store.createMonitor({
+    name: 'Alpha',
+    checkType: 'ping',
+    host: '127.0.0.1',
+    groupId: group.id,
+    groupName: group.name,
+    webhookType: group.webhookType,
+    webhookUrl: group.webhookUrl
+  });
+
+  const bravo = store.createMonitor({
+    name: 'Bravo',
+    checkType: 'ping',
+    host: '127.0.0.2',
+    groupId: group.id,
+    groupName: group.name,
+    webhookType: group.webhookType,
+    webhookUrl: group.webhookUrl
+  });
+
+  assert.ok(alpha.sortOrder < bravo.sortOrder);
+
+  store.moveMonitorInGroup(bravo.id, 'up');
+
+  const movedAlpha = store.getMonitorById(alpha.id);
+  const movedBravo = store.getMonitorById(bravo.id);
+  assert.ok(movedBravo.sortOrder < movedAlpha.sortOrder);
 });
 
 test('pruneOldHistory removes old incidents and events based on retention', () => {

@@ -11,7 +11,12 @@
 
     <label>
       Group
-      <input type="text" name="groupName" value="<%= monitor.groupName || 'Default' %>" placeholder="Company name" required />
+      <select name="groupId" id="groupId">
+        <option value="" <%= !monitor.groupId ? 'selected' : '' %>>Ungrouped (custom webhook)</option>
+        <% groups.forEach((group) => { %>
+        <option value="<%= group.id %>" <%= monitor.groupId === group.id ? 'selected' : '' %>><%= group.name %></option>
+        <% }) %>
+      </select>
     </label>
 
     <label>
@@ -67,7 +72,7 @@
       </select>
     </label>
 
-    <label>
+    <label id="custom-webhook-type-field">
       Alert destination
       <select name="webhookType" required>
         <option value="slack" <%= monitor.webhookType === 'slack' ? 'selected' : '' %>>Slack</option>
@@ -75,10 +80,16 @@
       </select>
     </label>
 
-    <label class="full">
+    <label class="full" id="custom-webhook-url-field">
       Webhook URL
       <input type="url" name="webhookUrl" value="<%= monitor.webhookUrl || '' %>" required />
     </label>
+
+    <div class="full card muted-group-note" id="group-webhook-note">
+      <strong>Group webhook</strong>
+      <p id="group-webhook-details"></p>
+      <p class="empty">This monitor inherits webhook settings from its selected group.</p>
+    </div>
 
     <label class="inline-check full">
       <input type="checkbox" name="active" <%= monitor.active ? 'checked' : '' %> />
@@ -94,19 +105,48 @@
 
 <script>
   (function () {
+    const groups = <%- JSON.stringify(groups) %>;
     const checkType = document.getElementById('checkType');
+    const groupId = document.getElementById('groupId');
     const hostField = document.getElementById('host-field');
     const urlField = document.getElementById('url-field');
     const keywordField = document.getElementById('keyword-field');
+    const customWebhookTypeField = document.getElementById('custom-webhook-type-field');
+    const customWebhookUrlField = document.getElementById('custom-webhook-url-field');
+    const groupWebhookNote = document.getElementById('group-webhook-note');
+    const groupWebhookDetails = document.getElementById('group-webhook-details');
+
+    function findGroup(id) {
+      return groups.find((group) => group.id === id) || null;
+    }
 
     function updateVisibility() {
       const type = checkType.value;
       hostField.style.display = type === 'ping' ? 'grid' : 'none';
       urlField.style.display = type === 'ping' ? 'none' : 'grid';
       keywordField.style.display = type === 'keyword' ? 'grid' : 'none';
+
+      const selectedGroup = findGroup(groupId.value);
+      const usingCustomWebhook = !selectedGroup;
+
+      customWebhookTypeField.style.display = usingCustomWebhook ? 'grid' : 'none';
+      customWebhookUrlField.style.display = usingCustomWebhook ? 'grid' : 'none';
+      groupWebhookNote.style.display = usingCustomWebhook ? 'none' : 'block';
+
+      const webhookUrlInput = customWebhookUrlField.querySelector('input[name="webhookUrl"]');
+      if (webhookUrlInput) {
+        webhookUrlInput.required = usingCustomWebhook;
+      }
+
+      if (selectedGroup) {
+        groupWebhookDetails.textContent = `${selectedGroup.webhookType.toUpperCase()} -> ${selectedGroup.webhookUrl}`;
+      } else {
+        groupWebhookDetails.textContent = '';
+      }
     }
 
     checkType.addEventListener('change', updateVisibility);
+    groupId.addEventListener('change', updateVisibility);
     updateVisibility();
   })();
 </script>

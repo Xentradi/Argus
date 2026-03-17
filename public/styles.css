@@ -150,6 +150,20 @@ body {
   margin-bottom: 0.9rem;
 }
 
+.muted-group-note {
+  border-style: dashed;
+  background: #f7faf4;
+}
+
+.muted-group-note strong {
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.muted-group-note p {
+  margin: 0.1rem 0;
+}
+
 .narrow {
   width: min(620px, 100%);
   margin: 1rem auto;
@@ -341,6 +355,10 @@ select:focus {
   display: flex;
   align-items: center;
   gap: 0.55rem;
+}
+
+.group-inline-form {
+  min-width: 420px;
 }
 
 .inline-check input {

@@ -26,7 +26,10 @@
 <section class="card">
   <div class="section-head">
     <h1>Monitors</h1>
-    <a class="button" href="/monitors/new">Add Monitor</a>
+    <div class="row-actions">
+      <a class="button muted" href="/groups">Manage Groups</a>
+      <a class="button" href="/monitors/new">Add Monitor</a>
+    </div>
   </div>
 
   <% if (groupedMonitors.length === 0) { %>
@@ -45,6 +48,7 @@
             <th>Last Check</th>
             <th>Next Check</th>
             <th>Last Error</th>
+            <th>Order</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -62,12 +66,32 @@
               <span class="status <%= monitor.runtime.status %>"><%= hasUnconfirmedFailures ? 'up (confirming)' : monitor.runtime.status %></span>
             </td>
             <td>
-              <%= monitor.runtime.lastCheckAt ? new Date(monitor.runtime.lastCheckAt).toLocaleString() : 'Never' %>
+              <% if (monitor.runtime.lastCheckAt) { %>
+              <time class="js-local-time" datetime="<%= monitor.runtime.lastCheckAt %>" data-style="datetime"><%= monitor.runtime.lastCheckAt %></time>
+              <% } else { %>
+              Never
+              <% } %>
             </td>
             <td>
-              <%= monitor.runtime.nextCheckAt ? new Date(monitor.runtime.nextCheckAt).toLocaleTimeString() : '-' %>
+              <% if (monitor.runtime.nextCheckAt) { %>
+              <time class="js-local-time" datetime="<%= monitor.runtime.nextCheckAt %>" data-style="time"><%= monitor.runtime.nextCheckAt %></time>
+              <% } else { %>
+              -
+              <% } %>
             </td>
             <td class="target"><%= monitor.runtime.lastError || '-' %></td>
+            <td>
+              <div class="row-actions">
+                <form action="/monitors/<%= monitor.id %>/move" method="post">
+                  <input type="hidden" name="direction" value="up" />
+                  <button class="button small muted" type="submit" aria-label="Move up">↑</button>
+                </form>
+                <form action="/monitors/<%= monitor.id %>/move" method="post">
+                  <input type="hidden" name="direction" value="down" />
+                  <button class="button small muted" type="submit" aria-label="Move down">↓</button>
+                </form>
+              </div>
+            </td>
             <td>
               <div class="row-actions">
                 <a class="button small muted" href="/monitors/<%= monitor.id %>/edit">Edit</a>
@@ -110,8 +134,14 @@
         <% incidents.forEach((incident) => { %>
         <tr>
           <td><%= incident.monitorName %></td>
-          <td><%= new Date(incident.startedAt).toLocaleString() %></td>
-          <td><%= incident.endedAt ? new Date(incident.endedAt).toLocaleString() : 'Open' %></td>
+          <td><time class="js-local-time" datetime="<%= incident.startedAt %>" data-style="datetime"><%= incident.startedAt %></time></td>
+          <td>
+            <% if (incident.endedAt) { %>
+            <time class="js-local-time" datetime="<%= incident.endedAt %>" data-style="datetime"><%= incident.endedAt %></time>
+            <% } else { %>
+            Open
+            <% } %>
+          </td>
           <td><%= incident.durationSeconds === null ? '-' : `${incident.durationSeconds}s` %></td>
           <td class="target"><%= incident.downReason || '-' %></td>
           <td class="target"><%= incident.recoveryReason || '-' %></td>
@@ -124,7 +154,10 @@
 </section>
 
 <section class="card">
-  <h2>Event Log</h2>
+  <div class="section-head">
+    <h2>Event Log</h2>
+    <p class="subtitle">Page <%= eventPagination.page %> of <%= eventPagination.totalPages %></p>
+  </div>
 
   <% if (events.length === 0) { %>
   <p class="empty">No events yet.</p>
@@ -142,7 +175,7 @@
       <tbody>
         <% events.forEach((event) => { %>
         <tr>
-          <td><%= new Date(event.createdAt).toLocaleString() %></td>
+          <td><time class="js-local-time" datetime="<%= event.createdAt %>" data-style="datetime"><%= event.createdAt %></time></td>
           <td><%= event.monitorName || '-' %></td>
           <td><%= event.eventType %></td>
           <td class="target"><%= event.message %></td>
@@ -152,6 +185,67 @@
     </table>
   </div>
   <% } %>
+
+  <% if (eventPagination.totalPages > 1) { %>
+  <div class="row-actions">
+    <% if (eventPagination.hasPrev) { %>
+    <a class="button small muted" href="/?eventsPage=<%= eventPagination.page - 1 %>">Previous</a>
+    <% } %>
+    <% if (eventPagination.hasNext) { %>
+    <a class="button small muted" href="/?eventsPage=<%= eventPagination.page + 1 %>">Next</a>
+    <% } %>
+  </div>
+  <% } %>
 </section>
+
+<script>
+  (function () {
+    function localizeTimes() {
+      const nodes = document.querySelectorAll('.js-local-time[datetime]');
+      for (const node of nodes) {
+        const iso = node.getAttribute('datetime');
+        if (!iso) {
+          continue;
+        }
+
+        const date = new Date(iso);
+        if (Number.isNaN(date.getTime())) {
+          continue;
+        }
+
+        const style = node.getAttribute('data-style') || 'datetime';
+        if (style === 'time') {
+          node.textContent = date.toLocaleTimeString();
+        } else {
+          node.textContent = date.toLocaleString();
+        }
+      }
+    }
+
+    localizeTimes();
+
+    const refreshMs = 15000;
+    let timer = null;
+
+    function scheduleRefresh() {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (document.visibilityState === 'visible') {
+          window.location.reload();
+          return;
+        }
+        scheduleRefresh();
+      }, refreshMs);
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        scheduleRefresh();
+      }
+    });
+
+    scheduleRefresh();
+  })();
+</script>
 
 <%- include('partials/layout-bottom') %>

@@ -1,0 +1,94 @@
+<%- include('partials/layout-top', { title: 'Groups' }) %>
+
+<section class="card">
+  <h1>Monitor Groups</h1>
+  <p>Create a group with a shared webhook. Monitors in that group inherit this webhook automatically.</p>
+
+  <form method="post" action="/groups" class="form-grid two-col">
+    <label>
+      Group Name
+      <input type="text" name="name" placeholder="EnviroServices" required />
+    </label>
+
+    <label>
+      Webhook Type
+      <select name="webhookType" required>
+        <option value="slack">Slack</option>
+        <option value="discord">Discord</option>
+      </select>
+    </label>
+
+    <label class="full">
+      Webhook URL
+      <input type="url" name="webhookUrl" placeholder="https://hooks.slack.com/..." required />
+    </label>
+
+    <div class="full row-actions">
+      <button class="button" type="submit">Create Group</button>
+      <a class="button muted" href="/">Back</a>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Existing Groups</h2>
+
+  <% if (groups.length === 0) { %>
+  <p class="empty">No groups created yet.</p>
+  <% } else { %>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Webhook Type</th>
+          <th>Webhook URL</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% groups.forEach((group) => { %>
+        <tr>
+          <td><%= group.name %></td>
+          <td><%= group.webhookType %></td>
+          <td class="target"><%= group.webhookUrl %></td>
+          <td>
+            <form method="post" action="/groups/<%= group.id %>/update" class="form-grid two-col group-inline-form">
+              <label>
+                Name
+                <input type="text" name="name" value="<%= group.name %>" required />
+              </label>
+              <label>
+                Type
+                <select name="webhookType" required>
+                  <option value="slack" <%= group.webhookType === 'slack' ? 'selected' : '' %>>Slack</option>
+                  <option value="discord" <%= group.webhookType === 'discord' ? 'selected' : '' %>>Discord</option>
+                </select>
+              </label>
+              <label class="full">
+                URL
+                <input type="url" name="webhookUrl" value="<%= group.webhookUrl %>" required />
+              </label>
+              <div class="full row-actions">
+                <button class="button small" type="submit">Save</button>
+                <button
+                  class="button small danger"
+                  type="submit"
+                  formaction="/groups/<%= group.id %>/delete"
+                  formmethod="post"
+                  onclick="return confirm('Delete this group? Monitors in it become ungrouped.');"
+                >
+                  Delete
+                </button>
+              </div>
+            </form>
+          </td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</section>
+
+<%- include('partials/layout-bottom') %>
