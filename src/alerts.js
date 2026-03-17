@@ -116,7 +116,7 @@ function buildAlertLines(monitor, payload, presentation) {
   const target = monitorTarget(monitor);
   const lines = [
     `${presentation.emoji} *${presentation.statusLabel}* ${monitor.name}`,
-    `*Target:* ${target || '-'}`,
+    `*Host:* ${target || '-'}`,
     `*${presentation.timeLabel}:* ${formattedTime}`
   ];
 

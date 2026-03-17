@@ -50,7 +50,7 @@ test('status alert message includes current monitor state', () => {
   );
 
   assert.match(message, /^🔴 \*DOWN\* Gateway/);
-  assert.match(message, /\*Target:\* 203\.0\.113\.10/);
+  assert.match(message, /\*Host:\* 203\.0\.113\.10/);
   assert.match(message, /\*Down at:\*/);
   assert.match(message, /203.0.113.10/);
 });
