@@ -138,6 +138,7 @@ pm2 startup
 - `WEBHOOK_ICON_PATH` (default: `/img/argus.jpg`)
 - `WEBHOOK_ICON_URL` (default: empty)
 - `SESSION_SECRET` (optional override; otherwise persisted in SQLite)
+- `SESSION_DB_FILE` (default: `argus-sessions.sqlite`, stored in the same directory as `DB_FILE`)
 
 ## Data Retention
 

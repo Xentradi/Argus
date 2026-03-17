@@ -1,5 +1,6 @@
 const express = require('express');
 const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
 const helmet = require('helmet');
 const path = require('path');
 const bcrypt = require('bcryptjs');
@@ -37,8 +38,16 @@ app.use(
 app.use(express.urlencoded({ extended: false }));
 app.use('/public', express.static(path.join(__dirname, '..', 'public')));
 
+const sessionDbDir = path.dirname(config.dbFile);
+const sessionDbFile = process.env.SESSION_DB_FILE || 'argus-sessions.sqlite';
+
 app.use(
   session({
+    store: new SQLiteStore({
+      dir: sessionDbDir,
+      db: sessionDbFile,
+      table: 'sessions'
+    }),
     name: 'argus_sid',
     secret: process.env.SESSION_SECRET || store.getSessionSecret(),
     resave: false,
