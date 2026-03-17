@@ -1110,6 +1110,31 @@ class DataStore {
     }));
   }
 
+  listOpenIncidents() {
+    const rows = this.db
+      .prepare(
+        `
+          SELECT * FROM incidents
+          WHERE ended_at IS NULL
+          ORDER BY datetime(started_at) DESC
+        `
+      )
+      .all();
+
+    return rows.map((row) => ({
+      id: row.id,
+      monitorId: row.monitor_id,
+      monitorName: row.monitor_name,
+      startedAt: row.started_at,
+      endedAt: row.ended_at,
+      durationSeconds: row.duration_seconds,
+      downReason: row.down_reason,
+      recoveryReason: row.recovery_reason,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+  }
+
   addIncident({ monitorId, monitorName, startedAt, downReason }) {
     const incident = {
       id: crypto.randomUUID(),

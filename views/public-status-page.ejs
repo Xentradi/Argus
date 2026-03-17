@@ -8,6 +8,12 @@
   <h1><%= statusPage.name %></h1>
   <p>Uptime goal: <strong><%= uptimeGoalPercent.toFixed(3) %>%</strong></p>
 
+  <div class="row-actions status-live-meta">
+    <span class="live-pill">Live</span>
+    <span class="cell-sub" id="js-public-summary"><%= summary.up %> up, <%= summary.down %> down, <%= summary.unknown %> unknown</span>
+    <span class="cell-sub">Updated <time id="js-public-updated" class="js-local-time" datetime="<%= generatedAt %>" data-style="datetime"><%= generatedAt %></time></span>
+  </div>
+
   <% if (monitors.length === 0) { %>
   <p class="empty">No monitors are assigned to this status page.</p>
   <% } else { %>
@@ -22,10 +28,10 @@
       </thead>
       <tbody>
         <% monitors.forEach((monitor) => { %>
-        <tr>
-          <td><span class="status <%= monitor.status %>"><%= monitor.status %></span></td>
-          <td><%= monitor.name %></td>
-          <td class="uptime-cell"><%= monitor.uptimePercent %></td>
+        <tr data-monitor-id="<%= monitor.id %>">
+          <td><span class="status <%= monitor.status %>" data-field="status"><%= monitor.status %></span></td>
+          <td data-field="name"><%= monitor.name %></td>
+          <td class="uptime-cell" data-field="uptime"><%= monitor.uptimePercent %></td>
         </tr>
         <% }) %>
       </tbody>
@@ -37,12 +43,147 @@
 
 <script>
   (function () {
-    const refreshMs = 30000;
-    setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        window.location.reload();
+    function setLocalizedTime(node, iso, style) {
+      if (!node || !iso) {
+        return;
       }
-    }, refreshMs);
+
+      const date = new Date(iso);
+      if (Number.isNaN(date.getTime())) {
+        node.textContent = iso;
+        return;
+      }
+
+      node.setAttribute('datetime', iso);
+      node.setAttribute('data-style', style || 'datetime');
+      node.textContent = style === 'time' ? date.toLocaleTimeString() : date.toLocaleString();
+    }
+
+    function localizeTimes(root) {
+      const scope = root || document;
+      const nodes = scope.querySelectorAll('.js-local-time[datetime]');
+      for (const node of nodes) {
+        setLocalizedTime(node, node.getAttribute('datetime'), node.getAttribute('data-style') || 'datetime');
+      }
+    }
+
+    localizeTimes(document);
+
+    const pageSlug = <%- JSON.stringify(statusPage ? statusPage.slug : null) %>;
+    if (!pageSlug) {
+      return;
+    }
+
+    function monitorIdsFromPayload(monitors) {
+      return monitors.map((monitor) => monitor.id).sort();
+    }
+
+    function monitorIdsFromDom() {
+      return Array.from(document.querySelectorAll('tr[data-monitor-id]'))
+        .map((node) => node.getAttribute('data-monitor-id'))
+        .sort();
+    }
+
+    let pending = false;
+    let timer = null;
+    let downCount = <%- JSON.stringify(summary ? summary.down : 0) %>;
+
+    function nextDelayMs() {
+      return downCount > 0 ? 10000 : 30000;
+    }
+
+    function schedule(delayMs) {
+      clearTimeout(timer);
+      timer = setTimeout(runLiveRefresh, delayMs);
+    }
+
+    async function runLiveRefresh() {
+      if (document.visibilityState !== 'visible') {
+        schedule(nextDelayMs());
+        return;
+      }
+
+      if (pending) {
+        schedule(5000);
+        return;
+      }
+
+      pending = true;
+      try {
+        const response = await fetch(`/api/status/${encodeURIComponent(pageSlug)}/live`, {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json'
+          },
+          cache: 'no-store'
+        });
+
+        if (!response.ok) {
+          if (response.status === 404) {
+            window.location.reload();
+            return;
+          }
+          schedule(nextDelayMs());
+          return;
+        }
+
+        const snapshot = await response.json();
+        const payloadIds = monitorIdsFromPayload(snapshot.monitors || []);
+        const domIds = monitorIdsFromDom();
+        if (payloadIds.length !== domIds.length || payloadIds.some((id, idx) => id !== domIds[idx])) {
+          window.location.reload();
+          return;
+        }
+
+        for (const monitor of snapshot.monitors || []) {
+          const row = document.querySelector(`tr[data-monitor-id="${monitor.id}"]`);
+          if (!row) {
+            window.location.reload();
+            return;
+          }
+
+          const statusNode = row.querySelector('[data-field="status"]');
+          if (statusNode) {
+            statusNode.classList.remove('up', 'down', 'unknown');
+            statusNode.classList.add(monitor.status || 'unknown');
+            statusNode.textContent = monitor.status || 'unknown';
+          }
+
+          const nameNode = row.querySelector('[data-field="name"]');
+          if (nameNode) {
+            nameNode.textContent = monitor.name;
+          }
+
+          const uptimeNode = row.querySelector('[data-field="uptime"]');
+          if (uptimeNode) {
+            uptimeNode.textContent = monitor.uptimePercent;
+          }
+        }
+
+        const summaryNode = document.getElementById('js-public-summary');
+        if (summaryNode && snapshot.summary) {
+          summaryNode.textContent = `${snapshot.summary.up} up, ${snapshot.summary.down} down, ${snapshot.summary.unknown} unknown`;
+        }
+
+        downCount = snapshot.summary && Number.isFinite(snapshot.summary.down) ? snapshot.summary.down : 0;
+
+        const updatedNode = document.getElementById('js-public-updated');
+        setLocalizedTime(updatedNode, snapshot.generatedAt, 'datetime');
+      } catch (_error) {
+        // Keep current state when refresh fails.
+      } finally {
+        pending = false;
+        schedule(nextDelayMs() + Math.floor(Math.random() * 1200));
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        runLiveRefresh();
+      }
+    });
+
+    schedule(4000 + Math.floor(Math.random() * 1200));
   })();
 </script>
 

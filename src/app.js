@@ -116,6 +116,162 @@ function monitorTarget(monitor) {
   return monitor.checkType === 'ping' ? monitor.host : monitor.url;
 }
 
+function elapsedSecondsSince(isoDate, nowMs = Date.now()) {
+  const startedMs = new Date(isoDate).getTime();
+  if (!Number.isFinite(startedMs)) {
+    return null;
+  }
+
+  if (nowMs < startedMs) {
+    return 0;
+  }
+
+  return Math.round((nowMs - startedMs) / 1000);
+}
+
+function buildDashboardSnapshot({ eventsPage = 1, includeEvents = true, includeIncidents = true } = {}) {
+  const monitors = store.listMonitors();
+  const groups = store.listGroups();
+  const groupsById = new Map(groups.map((group) => [group.id, group]));
+  const openIncidentsByMonitorId = new Map(store.listOpenIncidents().map((incident) => [incident.monitorId, incident]));
+  const nowMs = Date.now();
+  const groupedMap = new Map();
+  const serializedMonitors = [];
+
+  for (const monitor of monitors) {
+    const effectiveGroup = monitor.groupId ? groupsById.get(monitor.groupId) : null;
+    const bucketKey = effectiveGroup ? effectiveGroup.id : 'ungrouped';
+    const bucketName = effectiveGroup ? effectiveGroup.name : 'Ungrouped';
+    const status = monitor.runtime.status || 'unknown';
+    const openIncident = openIncidentsByMonitorId.get(monitor.id) || null;
+    const downSince = openIncident
+      ? openIncident.startedAt
+      : status === 'down'
+        ? monitor.runtime.lastFailureAt || monitor.runtime.lastCheckAt || null
+        : null;
+    const outageSeconds = downSince ? elapsedSecondsSince(downSince, nowMs) : null;
+
+    const dashboardMonitor = {
+      id: monitor.id,
+      name: monitor.name,
+      groupId: effectiveGroup ? effectiveGroup.id : null,
+      groupName: bucketName,
+      sortOrder: monitor.sortOrder || 0,
+      checkType: monitor.checkType,
+      target: monitorTarget(monitor) || '-',
+      active: monitor.active,
+      runtime: {
+        status,
+        lastCheckAt: monitor.runtime.lastCheckAt || null,
+        nextCheckAt: monitor.runtime.nextCheckAt || null,
+        lastError: monitor.runtime.lastError || null,
+        lastResponseMs: monitor.runtime.lastResponseMs,
+        lastHttpStatus: monitor.runtime.lastHttpStatus,
+        lastKeywordMatched: monitor.runtime.lastKeywordMatched,
+        lastFailureAt: monitor.runtime.lastFailureAt || null,
+        lastSuccessAt: monitor.runtime.lastSuccessAt || null
+      },
+      hasUnconfirmedFailures: status === 'up' && Boolean(monitor.runtime.lastError),
+      outage: {
+        active: status === 'down',
+        startedAt: downSince,
+        durationSeconds: status === 'down' ? outageSeconds : null
+      }
+    };
+
+    serializedMonitors.push(dashboardMonitor);
+
+    if (!groupedMap.has(bucketKey)) {
+      groupedMap.set(bucketKey, {
+        groupId: effectiveGroup ? effectiveGroup.id : null,
+        groupName: bucketName,
+        monitors: []
+      });
+    }
+    groupedMap.get(bucketKey).monitors.push(dashboardMonitor);
+  }
+
+  const groupedMonitors = Array.from(groupedMap.values())
+    .sort((left, right) => {
+      if (!left.groupId && right.groupId) {
+        return 1;
+      }
+      if (left.groupId && !right.groupId) {
+        return -1;
+      }
+      return left.groupName.localeCompare(right.groupName);
+    })
+    .map((group) => ({
+      ...group,
+      monitors: group.monitors
+        .slice()
+        .sort(
+          (left, right) =>
+            (left.sortOrder || 0) - (right.sortOrder || 0) || left.name.localeCompare(right.name)
+        )
+    }));
+
+  const summary = {
+    total: serializedMonitors.length,
+    groups: groupedMonitors.length,
+    up: serializedMonitors.filter((monitor) => monitor.runtime.status === 'up').length,
+    down: serializedMonitors.filter((monitor) => monitor.runtime.status === 'down').length,
+    unknown: serializedMonitors.filter((monitor) => monitor.runtime.status === 'unknown').length
+  };
+
+  const activeOutages = serializedMonitors
+    .filter((monitor) => monitor.runtime.status === 'down')
+    .map((monitor) => ({
+      monitorId: monitor.id,
+      monitorName: monitor.name,
+      groupName: monitor.groupName,
+      target: monitor.target,
+      downSince: monitor.outage.startedAt,
+      durationSeconds: monitor.outage.durationSeconds,
+      reason: monitor.runtime.lastError || 'No failure details'
+    }))
+    .sort((left, right) => (right.durationSeconds || 0) - (left.durationSeconds || 0));
+
+  const snapshot = {
+    generatedAt: new Date(nowMs).toISOString(),
+    summary,
+    groupedMonitors,
+    activeOutages
+  };
+
+  if (includeIncidents) {
+    const incidents = store.listIncidents(250).map((incident) => {
+      if (incident.endedAt || !incident.startedAt) {
+        return incident;
+      }
+      return {
+        ...incident,
+        durationSeconds: elapsedSecondsSince(incident.startedAt, nowMs)
+      };
+    });
+    snapshot.incidents = incidents;
+  }
+
+  if (includeEvents) {
+    const requestedEventsPage = clampNumber(eventsPage, 1, 1000000, 1);
+    const eventsPerPage = 20;
+    const totalEvents = store.countEvents();
+    const totalEventPages = Math.max(1, Math.ceil(totalEvents / eventsPerPage));
+    const safeEventsPage = Math.min(requestedEventsPage, totalEventPages);
+    const eventsOffset = (safeEventsPage - 1) * eventsPerPage;
+
+    snapshot.events = store.listEvents(eventsPerPage, eventsOffset);
+    snapshot.eventPagination = {
+      page: safeEventsPage,
+      totalPages: totalEventPages,
+      hasPrev: safeEventsPage > 1,
+      hasNext: safeEventsPage < totalEventPages
+    };
+  }
+
+  return snapshot;
+}
+
 async function sendManualStatusAlert(monitor, trigger) {
   return sendWebhookAlert(monitor, {
     type: 'status',
@@ -303,6 +459,40 @@ function formatUptimePercent(ratio) {
   return `${percent.toFixed(5)}%`;
 }
 
+function buildPublicStatusSnapshot(slug) {
+  const statusPage = store.getStatusPageBySlug(slug);
+  if (!statusPage) {
+    return null;
+  }
+
+  const monitors = statusPage.monitors.map((monitor) => {
+    const uptime = store.calculateMonitorUptimeStats(monitor.id);
+    return {
+      id: monitor.id,
+      name: monitor.name,
+      status: monitor.runtime.status || 'unknown',
+      uptimePercent: formatUptimePercent(uptime ? uptime.uptimeRatio : Number.NaN)
+    };
+  });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    uptimeGoalPercent: 99.999,
+    statusPage: {
+      id: statusPage.id,
+      slug: statusPage.slug,
+      name: statusPage.name
+    },
+    monitors,
+    summary: {
+      total: monitors.length,
+      up: monitors.filter((monitor) => monitor.status === 'up').length,
+      down: monitors.filter((monitor) => monitor.status === 'down').length,
+      unknown: monitors.filter((monitor) => monitor.status === 'unknown').length
+    }
+  };
+}
+
 app.use((req, res, next) => {
   res.locals.appName = config.appName;
   res.locals.flash = req.session.flash || null;
@@ -323,31 +513,42 @@ app.get('/healthz', (_req, res) => {
 });
 
 app.get('/status/:slug', (req, res) => {
-  const statusPage = store.getStatusPageBySlug(req.params.slug);
-  if (!statusPage) {
+  const snapshot = buildPublicStatusSnapshot(req.params.slug);
+  if (!snapshot) {
     res.status(404).render('public-status-page', {
       statusPage: null,
       monitors: [],
-      uptimeGoalPercent: 99.999
+      uptimeGoalPercent: 99.999,
+      generatedAt: new Date().toISOString(),
+      summary: {
+        total: 0,
+        up: 0,
+        down: 0,
+        unknown: 0
+      }
     });
     return;
   }
 
-  const monitors = statusPage.monitors.map((monitor) => {
-    const uptime = store.calculateMonitorUptimeStats(monitor.id);
-    return {
-      id: monitor.id,
-      name: monitor.name,
-      status: monitor.runtime.status || 'unknown',
-      uptimePercent: formatUptimePercent(uptime ? uptime.uptimeRatio : Number.NaN)
-    };
-  });
-
   res.render('public-status-page', {
-    statusPage,
-    monitors,
-    uptimeGoalPercent: 99.999
+    statusPage: snapshot.statusPage,
+    monitors: snapshot.monitors,
+    uptimeGoalPercent: snapshot.uptimeGoalPercent,
+    generatedAt: snapshot.generatedAt,
+    summary: snapshot.summary
   });
+});
+
+app.get('/api/status/:slug/live', (req, res) => {
+  const snapshot = buildPublicStatusSnapshot(req.params.slug);
+  if (!snapshot) {
+    res.status(404).json({
+      error: 'Status page not found'
+    });
+    return;
+  }
+
+  res.json(snapshot);
 });
 
 app.get(
@@ -527,74 +728,38 @@ app.get(
   '/',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const monitors = store.listMonitors();
-    const groups = store.listGroups();
-    const incidents = store.listIncidents(250);
-    const requestedEventsPage = clampNumber(req.query.eventsPage, 1, 1000000, 1);
-    const eventsPerPage = 20;
-    const totalEvents = store.countEvents();
-    const totalEventPages = Math.max(1, Math.ceil(totalEvents / eventsPerPage));
-    const eventsPage = Math.min(requestedEventsPage, totalEventPages);
-    const eventsOffset = (eventsPage - 1) * eventsPerPage;
-    const events = store.listEvents(eventsPerPage, eventsOffset);
-    const groupsById = new Map(groups.map((group) => [group.id, group]));
-    const groupedMap = new Map();
-
-    for (const monitor of monitors) {
-      const effectiveGroup = monitor.groupId ? groupsById.get(monitor.groupId) : null;
-      const bucketKey = effectiveGroup ? effectiveGroup.id : 'ungrouped';
-      const bucketName = effectiveGroup ? effectiveGroup.name : 'Ungrouped';
-
-      if (!groupedMap.has(bucketKey)) {
-        groupedMap.set(bucketKey, {
-          groupId: effectiveGroup ? effectiveGroup.id : null,
-          groupName: bucketName,
-          monitors: []
-        });
-      }
-      groupedMap.get(bucketKey).monitors.push(monitor);
-    }
-
-    const groupedMonitors = Array.from(groupedMap.values())
-      .sort((left, right) => {
-        if (!left.groupId && right.groupId) {
-          return 1;
-        }
-        if (left.groupId && !right.groupId) {
-          return -1;
-        }
-        return left.groupName.localeCompare(right.groupName);
-      })
-      .map((group) => ({
-        ...group,
-        monitors: group.monitors
-          .slice()
-          .sort(
-            (left, right) =>
-              (left.sortOrder || 0) - (right.sortOrder || 0) || left.name.localeCompare(right.name)
-          )
-      }));
-
-    const summary = {
-      total: monitors.length,
-      groups: groupedMonitors.length,
-      up: monitors.filter((monitor) => monitor.runtime.status === 'up').length,
-      down: monitors.filter((monitor) => monitor.runtime.status === 'down').length,
-      unknown: monitors.filter((monitor) => monitor.runtime.status === 'unknown').length
-    };
+    const snapshot = buildDashboardSnapshot({
+      eventsPage: req.query.eventsPage,
+      includeEvents: true,
+      includeIncidents: true
+    });
 
     res.render('dashboard', {
-      groupedMonitors,
-      incidents,
-      events,
-      summary,
-      monitorTarget,
-      eventPagination: {
-        page: eventsPage,
-        totalPages: totalEventPages,
-        hasPrev: eventsPage > 1,
-        hasNext: eventsPage < totalEventPages
-      }
+      groupedMonitors: snapshot.groupedMonitors,
+      incidents: snapshot.incidents,
+      events: snapshot.events,
+      summary: snapshot.summary,
+      activeOutages: snapshot.activeOutages,
+      generatedAt: snapshot.generatedAt,
+      eventPagination: snapshot.eventPagination
+    });
+  })
+);
+
+app.get(
+  '/api/dashboard/live',
+  requireAuth,
+  asyncHandler(async (_req, res) => {
+    const snapshot = buildDashboardSnapshot({
+      includeEvents: false,
+      includeIncidents: false
+    });
+
+    res.json({
+      generatedAt: snapshot.generatedAt,
+      summary: snapshot.summary,
+      groupedMonitors: snapshot.groupedMonitors,
+      activeOutages: snapshot.activeOutages
     });
   })
 );
