@@ -775,6 +775,22 @@ textarea:focus {
   color: var(--text-muted);
 }
 
+.public-status-table .public-status-row {
+  transition: background-color 160ms ease;
+}
+
+.public-status-table .public-status-row.state-up {
+  background: rgba(61, 220, 255, 0.08);
+}
+
+.public-status-table .public-status-row.state-down {
+  background: rgba(161, 42, 42, 0.18);
+}
+
+.public-status-table .public-status-row.state-unknown {
+  background: rgba(109, 90, 168, 0.12);
+}
+
 .qr-block {
   display: grid;
   justify-items: start;

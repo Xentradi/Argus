@@ -84,7 +84,7 @@
       </thead>
       <tbody>
         <% monitors.forEach((monitor) => { %>
-        <tr data-monitor-id="<%= monitor.id %>">
+        <tr data-monitor-id="<%= monitor.id %>" class="public-status-row state-<%= monitor.status %>">
           <td><span class="status <%= monitor.status %>" data-field="status"><%= monitor.status %></span></td>
           <td data-field="name"><%= monitor.name %></td>
           <td class="uptime-cell" data-field="uptime"><%= monitor.uptimePercent %></td>
@@ -262,6 +262,8 @@
             statusNode.classList.add(monitor.status || 'unknown');
             statusNode.textContent = monitor.status || 'unknown';
           }
+          row.classList.remove('state-up', 'state-down', 'state-unknown');
+          row.classList.add(`state-${monitor.status || 'unknown'}`);
 
           const nameNode = row.querySelector('[data-field="name"]');
           if (nameNode) {
