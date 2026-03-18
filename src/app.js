@@ -51,6 +51,13 @@ app.get('/favicon.ico', (_req, res) => {
 
 const sessionDbDir = path.dirname(config.dbFile);
 const sessionDbFile = process.env.SESSION_DB_FILE || 'argus-sessions.sqlite';
+const sessionCookieName = process.env.NODE_ENV === 'production' ? '__Host-argus_sid' : 'argus_sid';
+const sessionCookieOptions = {
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: process.env.NODE_ENV === 'production',
+  maxAge: 24 * 60 * 60 * 1000
+};
 
 app.use(
   session({
@@ -59,16 +66,11 @@ app.use(
       db: sessionDbFile,
       table: 'sessions'
     }),
-    name: 'argus_sid',
+    name: sessionCookieName,
     secret: process.env.SESSION_SECRET || store.getSessionSecret(),
     resave: false,
     saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 24 * 60 * 60 * 1000
-    }
+    cookie: sessionCookieOptions
   })
 );
 
@@ -82,6 +84,30 @@ function setFlash(req, type, message) {
 function clearSetupSecret(req) {
   delete req.session.setupTotpSecret;
   delete req.session.setupTotpOtpauth;
+}
+
+function regenerateSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function saveSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.save((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
 }
 
 function asyncHandler(fn) {
@@ -650,6 +676,7 @@ app.post(
     });
 
     clearSetupSecret(req);
+    await regenerateSession(req);
 
     setFlash(req, 'success', 'Account created. Sign in to continue.');
     res.redirect('/login');
@@ -695,7 +722,9 @@ app.post(
       return;
     }
 
+    await regenerateSession(req);
     req.session.pendingMfaUserId = user.id;
+    await saveSession(req);
     res.redirect('/mfa');
   })
 );
@@ -709,45 +738,59 @@ app.get('/mfa', (req, res) => {
   res.render('mfa');
 });
 
-app.post('/mfa', (req, res) => {
-  const pendingId = req.session.pendingMfaUserId;
-  if (!pendingId) {
-    res.redirect('/login');
-    return;
-  }
+app.post(
+  '/mfa',
+  asyncHandler(async (req, res) => {
+    const pendingId = req.session.pendingMfaUserId;
+    if (!pendingId) {
+      res.redirect('/login');
+      return;
+    }
 
-  const otpCode = String(req.body.otpCode || '').replace(/\s+/g, '');
-  const user = store.findUserById(pendingId);
+    const otpCode = String(req.body.otpCode || '').replace(/\s+/g, '');
+    const user = store.findUserById(pendingId);
 
-  if (!user) {
-    req.session.pendingMfaUserId = null;
-    setFlash(req, 'error', 'Login session expired. Please sign in again.');
-    res.redirect('/login');
-    return;
-  }
+    if (!user) {
+      req.session.pendingMfaUserId = null;
+      setFlash(req, 'error', 'Login session expired. Please sign in again.');
+      res.redirect('/login');
+      return;
+    }
 
-  const validOtp = speakeasy.totp.verify({
-    secret: user.totpSecret,
-    encoding: 'base32',
-    token: otpCode,
-    window: 1
-  });
+    const validOtp = speakeasy.totp.verify({
+      secret: user.totpSecret,
+      encoding: 'base32',
+      token: otpCode,
+      window: 1
+    });
 
-  if (!validOtp) {
-    setFlash(req, 'error', 'Invalid MFA code.');
-    res.redirect('/mfa');
-    return;
-  }
+    if (!validOtp) {
+      setFlash(req, 'error', 'Invalid MFA code.');
+      res.redirect('/mfa');
+      return;
+    }
 
-  req.session.pendingMfaUserId = null;
-  req.session.authenticatedUserId = user.id;
-  req.session.save(() => {
+    await regenerateSession(req);
+    req.session.authenticatedUserId = user.id;
+    await saveSession(req);
     res.redirect('/');
-  });
-});
+  })
+);
 
 app.post('/logout', (req, res) => {
   req.session.destroy(() => {
+    res.clearCookie('argus_sid', {
+      path: '/',
+      httpOnly: true,
+      sameSite: sessionCookieOptions.sameSite,
+      secure: sessionCookieOptions.secure
+    });
+    res.clearCookie(sessionCookieName, {
+      path: '/',
+      httpOnly: true,
+      sameSite: sessionCookieOptions.sameSite,
+      secure: sessionCookieOptions.secure
+    });
     res.redirect('/login');
   });
 });

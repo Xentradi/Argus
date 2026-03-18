@@ -89,7 +89,6 @@
               <th>Next Check</th>
               <th>Outage</th>
               <th>Last Error</th>
-              <th>Details</th>
             </tr>
           </thead>
           <tbody>
@@ -132,12 +131,9 @@
                 <div class="cell-sub" data-field="outage-duration" data-duration-seconds="<%= monitor.outage.durationSeconds === null || monitor.outage.durationSeconds === undefined ? '' : monitor.outage.durationSeconds %>"><%= monitor.outage.durationSeconds === null || monitor.outage.durationSeconds === undefined ? '-' : `${monitor.outage.durationSeconds}s` %></div>
               </td>
               <td class="target" data-field="last-error" title="<%= monitor.runtime.lastError || '-' %>"><%= monitor.runtime.lastError || '-' %></td>
-              <td class="actions-cell">
-                <span class="cell-sub" data-field="details-hint">Click row</span>
-              </td>
             </tr>
             <tr class="monitor-incidents-row" id="monitor-incidents-<%= monitor.id %>" data-incidents-row-for="<%= monitor.id %>" hidden>
-              <td colspan="9">
+              <td colspan="8">
                 <div class="monitor-incidents-panel">
                   <div class="monitor-incidents-head">
                     <strong>Incident History for <%= monitor.name %></strong>
@@ -396,10 +392,6 @@
         incidentsRow.toggleAttribute('hidden', !nextState);
         row.setAttribute('data-expanded', nextState ? 'true' : 'false');
 
-        const hint = row.querySelector('[data-field="details-hint"]');
-        if (hint) {
-          hint.textContent = nextState ? 'Expanded' : 'Click row';
-        }
       });
     }
 
