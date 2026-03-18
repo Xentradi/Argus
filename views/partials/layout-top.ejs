@@ -12,30 +12,33 @@
   </head>
   <body>
     <div class="page-background"></div>
-    <main class="container">
-      <header class="site-header">
-        <div>
-          <a class="brand" href="/">
-            <picture class="brand-mark-wrap">
-              <source srcset="/img/argus-logo.webp" type="image/webp" />
-              <img class="brand-mark" src="/img/argus-logo.png" alt="<%= appName %> logo" />
-            </picture>
-            <span><%= appName %></span>
-          </a>
-          <p class="subtitle">Studio Xentradi Monitoring Console</p>
-        </div>
+    <main class="app-shell">
+      <aside class="app-sidebar">
+        <a class="brand" href="/">
+          <picture class="brand-mark-wrap">
+            <source srcset="/img/argus-logo.webp" type="image/webp" />
+            <img class="brand-mark" src="/img/argus-logo.png" alt="<%= appName %> logo" />
+          </picture>
+          <span><%= appName %></span>
+        </a>
+        <p class="subtitle">Studio Xentradi Monitoring Console</p>
 
         <% if (authenticated) { %>
-        <div class="header-actions">
-          <a class="button muted" href="/">Dashboard</a>
-          <a class="button muted" href="/groups">Groups</a>
-          <a class="button muted" href="/status-pages">Status Pages</a>
-          <form action="/logout" method="post">
-            <button class="button danger" type="submit">Log Out</button>
-          </form>
-        </div>
+        <nav class="sidebar-nav">
+          <a class="sidebar-link <%= title === 'Dashboard' ? 'active' : '' %>" href="/">Dashboard</a>
+          <a class="sidebar-link <%= title === 'Groups' ? 'active' : '' %>" href="/groups">Groups</a>
+          <a class="sidebar-link <%= title === 'Status Pages' ? 'active' : '' %>" href="/status-pages">Status Pages</a>
+        </nav>
+        <form class="sidebar-logout" action="/logout" method="post">
+          <button class="button danger" type="submit">Log Out</button>
+        </form>
+        <% } else { %>
+        <p class="sidebar-note">Secure monitoring access</p>
         <% } %>
-      </header>
+      </aside>
+
+      <section class="app-main">
+        <div class="content-wrap">
 
       <% if (flash) { %>
       <div class="flash <%= flash.type %>"><%= flash.message %></div>

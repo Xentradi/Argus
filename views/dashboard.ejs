@@ -23,13 +23,6 @@
   </article>
 </section>
 
-<section class="card live-meta">
-  <div class="row-actions">
-    <span class="live-pill">Live Dashboard</span>
-    <span class="cell-sub">Updated <time id="js-live-updated" class="js-local-time" datetime="<%= generatedAt %>" data-style="datetime"><%= generatedAt %></time></span>
-  </div>
-</section>
-
 <section class="card">
   <div class="section-head">
     <h2>Active Outages</h2>
@@ -582,8 +575,6 @@
 
         updateActiveOutages(snapshot);
 
-        const updatedNode = document.getElementById('js-live-updated');
-        setLocalizedTime(updatedNode, snapshot.generatedAt, 'datetime');
         renderDurationNodes();
         localizeTimes();
       } catch (_error) {
