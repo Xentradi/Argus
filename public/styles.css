@@ -799,15 +799,26 @@ textarea:focus {
   transition: background-color 160ms ease;
 }
 
-.public-status-table .public-status-row.state-up {
+.public-status-table .public-status-row.uptime-gradient {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(61, 220, 255, 0.24) 0%,
+      rgba(61, 220, 255, 0.24) var(--uptime-fill, 0%),
+      rgba(161, 42, 42, 0.24) var(--uptime-fill, 0%),
+      rgba(161, 42, 42, 0.24) 100%
+    );
+}
+
+.public-status-table .public-status-row.state-up:not(.uptime-gradient) {
   background: rgba(61, 220, 255, 0.08);
 }
 
-.public-status-table .public-status-row.state-down {
+.public-status-table .public-status-row.state-down:not(.uptime-gradient) {
   background: rgba(161, 42, 42, 0.18);
 }
 
-.public-status-table .public-status-row.state-unknown {
+.public-status-table .public-status-row.state-unknown:not(.uptime-gradient) {
   background: rgba(109, 90, 168, 0.12);
 }
 

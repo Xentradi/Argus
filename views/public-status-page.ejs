@@ -84,7 +84,11 @@
       </thead>
       <tbody>
         <% monitors.forEach((monitor) => { %>
-        <tr data-monitor-id="<%= monitor.id %>" class="public-status-row state-<%= monitor.status %>">
+        <tr
+          data-monitor-id="<%= monitor.id %>"
+          data-uptime-ratio="<%= monitor.uptimeRatio === null || monitor.uptimeRatio === undefined ? '' : monitor.uptimeRatio %>"
+          class="public-status-row state-<%= monitor.status %>"
+        >
           <td><span class="status <%= monitor.status %>" data-field="status"><%= monitor.status %></span></td>
           <td data-field="name"><%= monitor.name %></td>
           <td class="uptime-cell" data-field="uptime"><%= monitor.uptimePercent %></td>
@@ -140,6 +144,23 @@
 
     function monitorIdsFromPayload(monitors) {
       return monitors.map((monitor) => monitor.id).sort();
+    }
+
+    function applyUptimeGradient(row, uptimeRatio) {
+      if (!row) {
+        return;
+      }
+
+      if (!Number.isFinite(uptimeRatio)) {
+        row.classList.remove('uptime-gradient');
+        row.style.removeProperty('--uptime-fill');
+        return;
+      }
+
+      const clamped = Math.max(0, Math.min(1, uptimeRatio));
+      row.classList.add('uptime-gradient');
+      row.style.setProperty('--uptime-fill', `${(clamped * 100).toFixed(3)}%`);
+      row.setAttribute('data-uptime-ratio', String(clamped));
     }
 
     function formatStateDuration(seconds, status) {
@@ -201,6 +222,11 @@
     let pending = false;
     let timer = null;
     let downCount = <%- JSON.stringify(summary ? summary.down : 0) %>;
+
+    for (const row of document.querySelectorAll('tr[data-monitor-id]')) {
+      const ratio = Number(row.getAttribute('data-uptime-ratio'));
+      applyUptimeGradient(row, ratio);
+    }
 
     function nextDelayMs() {
       return downCount > 0 ? 10000 : 30000;
@@ -264,6 +290,7 @@
           }
           row.classList.remove('state-up', 'state-down', 'state-unknown');
           row.classList.add(`state-${monitor.status || 'unknown'}`);
+          applyUptimeGradient(row, monitor.uptimeRatio);
 
           const nameNode = row.querySelector('[data-field="name"]');
           if (nameNode) {

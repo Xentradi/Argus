@@ -524,6 +524,7 @@ function buildPublicStatusSnapshot(slug) {
   const recoveryTimesByMonitorId = store.getLatestRecoveryTimesByMonitorIds(statusPage.monitors.map((monitor) => monitor.id));
   const monitors = statusPage.monitors.map((monitor) => {
     const uptime = store.calculateMonitorUptimeStats(monitor.id);
+    const uptimeRatio = uptime && Number.isFinite(uptime.uptimeRatio) ? Math.max(0, Math.min(1, uptime.uptimeRatio)) : null;
     const status = monitor.runtime.status || 'unknown';
     const openIncident = openIncidentsByMonitorId.get(monitor.id) || null;
     const lastRecoveryAt = recoveryTimesByMonitorId[monitor.id] || null;
@@ -540,7 +541,8 @@ function buildPublicStatusSnapshot(slug) {
       id: monitor.id,
       name: monitor.name,
       status,
-      uptimePercent: formatUptimePercent(uptime ? uptime.uptimeRatio : Number.NaN),
+      uptimePercent: formatUptimePercent(uptimeRatio),
+      uptimeRatio,
       stateSince,
       stateDurationSeconds: stateSince ? elapsedSecondsSince(stateSince, nowMs) : null
     };
