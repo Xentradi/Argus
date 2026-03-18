@@ -704,6 +704,65 @@ textarea:focus {
   min-width: 560px;
 }
 
+.public-status-body {
+  height: auto;
+  min-height: 100vh;
+  overflow-y: auto;
+}
+
+.public-status-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1rem 1rem 1.2rem;
+  position: relative;
+  z-index: 1;
+}
+
+.public-status-card {
+  margin-top: 0.25rem;
+}
+
+.public-status-counters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.public-status-counter {
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, 0.015);
+  border-radius: 2px;
+  padding: 0.55rem 0.65rem;
+}
+
+.public-status-counter .label {
+  display: block;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.public-status-counter strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 1.38rem;
+  line-height: 1;
+}
+
+.public-status-counter.up strong {
+  color: #97eeff;
+}
+
+.public-status-counter.down strong {
+  color: #ff9d9d;
+}
+
+.public-status-counter.unknown strong {
+  color: #d2c7ff;
+}
+
 .public-status-table .uptime-cell {
   font-weight: 700;
 }
@@ -856,6 +915,10 @@ a:hover {
   }
 
   .grid-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .public-status-counters {
     grid-template-columns: 1fr;
   }
 }
