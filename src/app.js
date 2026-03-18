@@ -521,17 +521,19 @@ function buildPublicStatusSnapshot(slug) {
 
   const nowMs = Date.now();
   const openIncidentsByMonitorId = new Map(store.listOpenIncidents().map((incident) => [incident.monitorId, incident]));
+  const recoveryTimesByMonitorId = store.getLatestRecoveryTimesByMonitorIds(statusPage.monitors.map((monitor) => monitor.id));
   const monitors = statusPage.monitors.map((monitor) => {
     const uptime = store.calculateMonitorUptimeStats(monitor.id);
     const status = monitor.runtime.status || 'unknown';
     const openIncident = openIncidentsByMonitorId.get(monitor.id) || null;
+    const lastRecoveryAt = recoveryTimesByMonitorId[monitor.id] || null;
     const stateSince =
       status === 'down'
         ? openIncident
           ? openIncident.startedAt
           : monitor.runtime.lastFailureAt || monitor.runtime.lastCheckAt || null
         : status === 'up'
-          ? monitor.runtime.lastSuccessAt || monitor.runtime.lastCheckAt || null
+          ? lastRecoveryAt || monitor.runtime.lastSuccessAt || monitor.createdAt || null
           : monitor.runtime.lastCheckAt || null;
 
     return {

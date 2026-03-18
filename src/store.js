@@ -1268,6 +1268,36 @@ class DataStore {
     return this.closeIncident(incident.id, details);
   }
 
+  getLatestRecoveryTimesByMonitorIds(monitorIds) {
+    const ids = Array.from(new Set((Array.isArray(monitorIds) ? monitorIds : []).map((id) => String(id || '').trim()).filter(Boolean)));
+    if (ids.length === 0) {
+      return {};
+    }
+
+    const placeholders = ids.map(() => '?').join(', ');
+    const rows = this.db
+      .prepare(
+        `
+          SELECT monitor_id, MAX(ended_at) AS last_recovery_at
+          FROM incidents
+          WHERE ended_at IS NOT NULL
+            AND monitor_id IN (${placeholders})
+          GROUP BY monitor_id
+        `
+      )
+      .all(...ids);
+
+    const recoveryTimesByMonitorId = {};
+    for (const row of rows) {
+      if (!row.monitor_id || !row.last_recovery_at) {
+        continue;
+      }
+      recoveryTimesByMonitorId[row.monitor_id] = row.last_recovery_at;
+    }
+
+    return recoveryTimesByMonitorId;
+  }
+
   calculateMonitorUptimeStats(monitorId, at = nowIso()) {
     const monitor = this.getMonitorById(monitorId);
     if (!monitor) {
