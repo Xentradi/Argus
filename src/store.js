@@ -75,6 +75,7 @@ class DataStore {
         updated_at TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'unknown',
         last_check_at TEXT,
+        first_success_at TEXT,
         last_success_at TEXT,
         last_failure_at TEXT,
         last_error TEXT,
@@ -140,6 +141,7 @@ class DataStore {
     this.migrateMonitorsGroupColumnIfNeeded();
     this.migrateMonitorsGroupIdColumnIfNeeded();
     this.migrateMonitorsSortOrderColumnIfNeeded();
+    this.migrateMonitorsFirstSuccessColumnIfNeeded();
     this.migrateLegacyGroupsIfNeeded();
     this.ensureMonitorIndexes();
   }
@@ -231,6 +233,28 @@ class DataStore {
 
       migrateSortOrder();
     }
+  }
+
+  migrateMonitorsFirstSuccessColumnIfNeeded() {
+    const columns = this.db.prepare("PRAGMA table_info('monitors')").all();
+    const hasFirstSuccessColumn = columns.some((column) => column.name === 'first_success_at');
+
+    if (!hasFirstSuccessColumn) {
+      this.db.prepare('ALTER TABLE monitors ADD COLUMN first_success_at TEXT').run();
+    }
+
+    // Best-effort backfill for legacy rows that are currently up.
+    this.db
+      .prepare(
+        `
+          UPDATE monitors
+          SET first_success_at = created_at
+          WHERE first_success_at IS NULL
+            AND status = 'up'
+            AND last_success_at IS NOT NULL
+        `
+      )
+      .run();
   }
 
   migrateLegacyGroupsIfNeeded() {
@@ -747,6 +771,7 @@ class DataStore {
       runtime: {
         status: row.status,
         lastCheckAt: row.last_check_at,
+        firstSuccessAt: row.first_success_at,
         lastSuccessAt: row.last_success_at,
         lastFailureAt: row.last_failure_at,
         lastError: row.last_error,
@@ -827,6 +852,7 @@ class DataStore {
       runtime: {
         status: 'unknown',
         lastCheckAt: null,
+        firstSuccessAt: null,
         lastSuccessAt: null,
         lastFailureAt: null,
         lastError: null,
@@ -846,10 +872,10 @@ class DataStore {
             keyword_case_sensitive, http_status_mode, tls_error_as_failure,
             webhook_type, webhook_url, timeout_ms, active,
             created_at, updated_at,
-            status, last_check_at, last_success_at, last_failure_at,
+            status, last_check_at, first_success_at, last_success_at, last_failure_at,
             last_error, last_response_ms, last_http_status,
             last_keyword_matched, last_tls_error, next_check_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `
       )
       .run(
@@ -873,6 +899,7 @@ class DataStore {
         monitor.updatedAt,
         monitor.runtime.status,
         monitor.runtime.lastCheckAt,
+        monitor.runtime.firstSuccessAt,
         monitor.runtime.lastSuccessAt,
         monitor.runtime.lastFailureAt,
         monitor.runtime.lastError,
@@ -937,6 +964,7 @@ class DataStore {
             updated_at = ?,
             status = ?,
             last_check_at = ?,
+            first_success_at = ?,
             last_success_at = ?,
             last_failure_at = ?,
             last_error = ?,
@@ -967,6 +995,7 @@ class DataStore {
         next.updatedAt,
         next.runtime.status,
         next.runtime.lastCheckAt,
+        next.runtime.firstSuccessAt,
         next.runtime.lastSuccessAt,
         next.runtime.lastFailureAt,
         next.runtime.lastError,

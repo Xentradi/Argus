@@ -150,6 +150,8 @@ class MonitorEngine {
   }
 
   persistResult(monitorId, result, status) {
+    const existingMonitor = this.store.getMonitorById(monitorId);
+    const existingFirstSuccessAt = existingMonitor && existingMonitor.runtime ? existingMonitor.runtime.firstSuccessAt : null;
     const runtimePatch = {
       status,
       lastCheckAt: result.checkedAt,
@@ -167,6 +169,7 @@ class MonitorEngine {
 
     if (result.success) {
       runtimePatch.lastSuccessAt = result.checkedAt;
+      runtimePatch.firstSuccessAt = existingFirstSuccessAt || result.checkedAt;
     } else {
       runtimePatch.lastFailureAt = result.checkedAt;
     }
@@ -354,10 +357,16 @@ class MonitorEngine {
 
   async markMonitorRecovered(monitor, result) {
     const at = result.checkedAt || new Date().toISOString();
+    const currentMonitor = this.store.getMonitorById(monitor.id);
+    const firstSuccessAt =
+      currentMonitor && currentMonitor.runtime && currentMonitor.runtime.firstSuccessAt
+        ? currentMonitor.runtime.firstSuccessAt
+        : at;
 
     this.store.updateMonitorRuntime(monitor.id, {
       status: 'up',
       lastCheckAt: at,
+      firstSuccessAt,
       lastSuccessAt: at,
       lastError: null,
       lastResponseMs: Number.isFinite(result.responseMs) ? Math.round(result.responseMs) : null,
@@ -387,12 +396,12 @@ class MonitorEngine {
       }
     });
 
-    const currentMonitor = this.store.getMonitorById(monitor.id);
-    if (!currentMonitor) {
+    const monitorAfterRecovery = this.store.getMonitorById(monitor.id);
+    if (!monitorAfterRecovery) {
       return;
     }
 
-    const alertResult = await sendWebhookAlert(currentMonitor, {
+    const alertResult = await sendWebhookAlert(monitorAfterRecovery, {
       type: 'recovery',
       at,
       downAt: closedIncident ? closedIncident.startedAt : null,
@@ -408,7 +417,7 @@ class MonitorEngine {
         ? 'Recovery alert sent'
         : `Failed to send recovery alert: ${alertResult.error || 'unknown error'}`,
       details: {
-        channel: currentMonitor.webhookType,
+        channel: monitorAfterRecovery.webhookType,
         skipped: Boolean(alertResult.skipped)
       }
     });

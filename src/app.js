@@ -533,7 +533,7 @@ function buildPublicStatusSnapshot(slug) {
           ? openIncident.startedAt
           : monitor.runtime.lastFailureAt || monitor.runtime.lastCheckAt || null
         : status === 'up'
-          ? lastRecoveryAt || monitor.runtime.lastSuccessAt || monitor.createdAt || null
+          ? lastRecoveryAt || monitor.runtime.firstSuccessAt || monitor.createdAt || null
           : monitor.runtime.lastCheckAt || null;
 
     return {
