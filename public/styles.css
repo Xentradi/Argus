@@ -702,6 +702,26 @@ textarea:focus {
 
 .public-status-table {
   min-width: 560px;
+  border-collapse: separate;
+  border-spacing: 0 0.42rem;
+}
+
+.public-status-table thead th {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.11);
+}
+
+.public-status-table tbody td {
+  border-bottom: 0;
+}
+
+.public-status-table tbody td:first-child {
+  border-top-left-radius: 2px;
+  border-bottom-left-radius: 2px;
+}
+
+.public-status-table tbody td:last-child {
+  border-top-right-radius: 2px;
+  border-bottom-right-radius: 2px;
 }
 
 .public-status-body {
