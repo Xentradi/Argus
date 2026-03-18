@@ -1,3 +1,31 @@
+<%
+  function formatStateDuration(seconds, status) {
+    if (!Number.isFinite(seconds) || seconds < 0) {
+      return '-';
+    }
+
+    const totalSeconds = Math.floor(seconds);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const secs = totalSeconds % 60;
+    const parts = [];
+
+    if (days > 0) {
+      parts.push(`${days}d`);
+    }
+    if (hours > 0 || days > 0) {
+      parts.push(`${hours}h`);
+    }
+    if (minutes > 0 || hours > 0 || days > 0) {
+      parts.push(`${minutes}m`);
+    }
+    parts.push(`${secs}s`);
+
+    const prefix = status === 'down' ? 'Down for ' : status === 'up' ? 'Up for ' : '';
+    return `${prefix}${parts.join(' ')}`;
+  }
+%>
 <%- include('partials/layout-top', { title: statusPage ? statusPage.name : 'Status Page' }) %>
 
 <section class="card">
@@ -24,6 +52,7 @@
           <th>Status</th>
           <th>Name</th>
           <th>Uptime</th>
+          <th>Current Duration</th>
         </tr>
       </thead>
       <tbody>
@@ -32,6 +61,13 @@
           <td><span class="status <%= monitor.status %>" data-field="status"><%= monitor.status %></span></td>
           <td data-field="name"><%= monitor.name %></td>
           <td class="uptime-cell" data-field="uptime"><%= monitor.uptimePercent %></td>
+          <td class="state-duration-cell">
+            <span
+              data-field="state-duration"
+              data-state="<%= monitor.status %>"
+              data-duration-seconds="<%= monitor.stateDurationSeconds === null || monitor.stateDurationSeconds === undefined ? '' : monitor.stateDurationSeconds %>"
+            ><%= formatStateDuration(monitor.stateDurationSeconds, monitor.status) %></span>
+          </td>
         </tr>
         <% }) %>
       </tbody>
@@ -76,6 +112,56 @@
 
     function monitorIdsFromPayload(monitors) {
       return monitors.map((monitor) => monitor.id).sort();
+    }
+
+    function formatStateDuration(seconds, status) {
+      if (!Number.isFinite(seconds) || seconds < 0) {
+        return '-';
+      }
+
+      const totalSeconds = Math.floor(seconds);
+      const days = Math.floor(totalSeconds / 86400);
+      const hours = Math.floor((totalSeconds % 86400) / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const secs = totalSeconds % 60;
+      const parts = [];
+
+      if (days > 0) {
+        parts.push(`${days}d`);
+      }
+      if (hours > 0 || days > 0) {
+        parts.push(`${hours}h`);
+      }
+      if (minutes > 0 || hours > 0 || days > 0) {
+        parts.push(`${minutes}m`);
+      }
+      parts.push(`${secs}s`);
+
+      const prefix = status === 'down' ? 'Down for ' : status === 'up' ? 'Up for ' : '';
+      return `${prefix}${parts.join(' ')}`;
+    }
+
+    function tickStateDurations() {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+
+      const nodes = document.querySelectorAll('[data-field="state-duration"]');
+      for (const node of nodes) {
+        const status = node.getAttribute('data-state') || 'unknown';
+        if (status !== 'up' && status !== 'down') {
+          continue;
+        }
+
+        const seconds = Number(node.getAttribute('data-duration-seconds'));
+        if (!Number.isFinite(seconds) || seconds < 0) {
+          continue;
+        }
+
+        const nextSeconds = seconds + 1;
+        node.setAttribute('data-duration-seconds', String(nextSeconds));
+        node.textContent = formatStateDuration(nextSeconds, status);
+      }
     }
 
     function monitorIdsFromDom() {
@@ -158,6 +244,18 @@
           if (uptimeNode) {
             uptimeNode.textContent = monitor.uptimePercent;
           }
+
+          const durationNode = row.querySelector('[data-field="state-duration"]');
+          if (durationNode) {
+            durationNode.setAttribute('data-state', monitor.status || 'unknown');
+            if (monitor.stateDurationSeconds === null || monitor.stateDurationSeconds === undefined) {
+              durationNode.setAttribute('data-duration-seconds', '');
+              durationNode.textContent = '-';
+            } else {
+              durationNode.setAttribute('data-duration-seconds', String(monitor.stateDurationSeconds));
+              durationNode.textContent = formatStateDuration(monitor.stateDurationSeconds, monitor.status || 'unknown');
+            }
+          }
         }
 
         const summaryNode = document.getElementById('js-public-summary');
@@ -184,6 +282,7 @@
     });
 
     schedule(4000 + Math.floor(Math.random() * 1200));
+    setInterval(tickStateDurations, 1000);
   })();
 </script>
 

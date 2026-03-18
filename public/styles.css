@@ -708,6 +708,14 @@ textarea:focus {
   font-weight: 700;
 }
 
+.public-status-table .state-duration-cell {
+  min-width: 170px;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
 .qr-block {
   display: grid;
   justify-items: start;

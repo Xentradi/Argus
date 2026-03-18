@@ -510,7 +510,7 @@ function formatUptimePercent(ratio) {
   }
 
   const percent = Math.max(0, Math.min(100, ratio * 100));
-  return `${percent.toFixed(5)}%`;
+  return `${percent.toFixed(3)}%`;
 }
 
 function buildPublicStatusSnapshot(slug) {
@@ -519,13 +519,28 @@ function buildPublicStatusSnapshot(slug) {
     return null;
   }
 
+  const nowMs = Date.now();
+  const openIncidentsByMonitorId = new Map(store.listOpenIncidents().map((incident) => [incident.monitorId, incident]));
   const monitors = statusPage.monitors.map((monitor) => {
     const uptime = store.calculateMonitorUptimeStats(monitor.id);
+    const status = monitor.runtime.status || 'unknown';
+    const openIncident = openIncidentsByMonitorId.get(monitor.id) || null;
+    const stateSince =
+      status === 'down'
+        ? openIncident
+          ? openIncident.startedAt
+          : monitor.runtime.lastFailureAt || monitor.runtime.lastCheckAt || null
+        : status === 'up'
+          ? monitor.runtime.lastSuccessAt || monitor.runtime.lastCheckAt || null
+          : monitor.runtime.lastCheckAt || null;
+
     return {
       id: monitor.id,
       name: monitor.name,
-      status: monitor.runtime.status || 'unknown',
-      uptimePercent: formatUptimePercent(uptime ? uptime.uptimeRatio : Number.NaN)
+      status,
+      uptimePercent: formatUptimePercent(uptime ? uptime.uptimeRatio : Number.NaN),
+      stateSince,
+      stateDurationSeconds: stateSince ? elapsedSecondsSince(stateSince, nowMs) : null
     };
   });
 
