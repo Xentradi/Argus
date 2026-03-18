@@ -20,12 +20,19 @@
       <% if (monitors.length === 0) { %>
       <p class="empty">Create monitors first.</p>
       <% } else { %>
-      <div class="status-page-monitor-grid">
-        <% monitors.forEach((monitor) => { %>
-        <label class="status-page-monitor-option">
-          <input type="checkbox" name="monitorIds" value="<%= monitor.id %>" checked />
-          <span><%= monitor.name %> (<%= monitor.runtime.status %>)</span>
-        </label>
+      <div class="status-page-monitor-groups">
+        <% groupedMonitors.forEach((group) => { %>
+        <section class="status-page-monitor-group">
+          <h3><%= group.name %> <span>(<%= group.monitors.length %>)</span></h3>
+          <div class="status-page-monitor-grid">
+            <% group.monitors.forEach((monitor) => { %>
+            <label class="status-page-monitor-option">
+              <input type="checkbox" name="monitorIds" value="<%= monitor.id %>" checked />
+              <span><%= monitor.name %> (<%= monitor.runtime.status %>)</span>
+            </label>
+            <% }) %>
+          </div>
+        </section>
         <% }) %>
       </div>
       <% } %>

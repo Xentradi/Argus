@@ -1225,9 +1225,49 @@ app.post('/groups/:id/delete', requireAuth, (req, res) => {
 });
 
 app.get('/status-pages', requireAuth, (req, res) => {
+  const monitors = store.listMonitors();
+  const monitorGroupMap = new Map();
+
+  for (const monitor of monitors) {
+    const groupId = monitor.groupId || null;
+    const key = groupId || 'ungrouped';
+    const groupName = groupId ? monitor.groupName || 'Ungrouped' : 'Ungrouped';
+
+    if (!monitorGroupMap.has(key)) {
+      monitorGroupMap.set(key, {
+        id: groupId,
+        name: groupName,
+        monitors: []
+      });
+    }
+
+    monitorGroupMap.get(key).monitors.push(monitor);
+  }
+
+  const groupedMonitors = Array.from(monitorGroupMap.values())
+    .sort((left, right) => {
+      if (!left.id && right.id) {
+        return 1;
+      }
+      if (left.id && !right.id) {
+        return -1;
+      }
+      return left.name.localeCompare(right.name);
+    })
+    .map((group) => ({
+      ...group,
+      monitors: group.monitors
+        .slice()
+        .sort(
+          (left, right) =>
+            (left.sortOrder || 0) - (right.sortOrder || 0) || left.name.localeCompare(right.name)
+        )
+    }));
+
   res.render('status-pages', {
     statusPages: store.listStatusPages(),
-    monitors: store.listMonitors()
+    monitors,
+    groupedMonitors
   });
 });
 
