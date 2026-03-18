@@ -11,3 +11,4 @@ img/
 *.db
 *.db-shm
 *.db-wal
+agents.md

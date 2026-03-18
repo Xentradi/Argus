@@ -30,7 +30,14 @@
   </div>
   <div id="js-active-outages-list" class="active-outage-list">
     <% if (activeOutages.length === 0) { %>
-    <p class="empty">No active outages.</p>
+    <article class="active-outage-clear">
+      <div class="active-outage-head">
+        <strong>All Monitors Healthy</strong>
+        <span class="status up">all clear</span>
+      </div>
+      <p class="cell-sub"><%= summary.up %> up, <%= summary.down %> down, <%= summary.unknown %> unknown</p>
+      <p class="empty">No active outages right now.</p>
+    </article>
     <% } else { %>
       <% activeOutages.forEach((outage) => { %>
       <article class="active-outage-item" data-outage-monitor-id="<%= outage.monitorId %>">
