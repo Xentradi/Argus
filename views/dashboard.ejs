@@ -94,14 +94,13 @@
           <tbody>
             <% group.monitors.forEach((monitor) => { %>
             <% const incidentsForMonitor = (incidentsByMonitor && incidentsByMonitor[monitor.id]) || []; %>
-            <tr class="monitor-row <%= monitor.runtime.status %>" data-monitor-id="<%= monitor.id %>" data-group-id="<%= group.groupId || 'ungrouped' %>">
+            <tr class="monitor-row <%= monitor.statusClass %>" data-monitor-id="<%= monitor.id %>" data-group-id="<%= group.groupId || 'ungrouped' %>">
               <td class="status-cell">
-                <span class="status <%= monitor.runtime.status %>" data-field="status"><%= monitor.hasUnconfirmedFailures ? 'up (confirming)' : monitor.runtime.status %></span>
+                <span class="status <%= monitor.statusClass %>" data-field="status"><%= monitor.displayStatus %></span>
               </td>
               <td>
                 <span class="monitor-expand">
                   <span class="cell-title" data-field="name"><%= monitor.name %></span>
-                  <span class="monitor-chip <%= monitor.active ? 'active' : 'paused' %>" data-field="active-chip"><%= monitor.active ? 'Active' : 'Paused' %></span>
                 </span>
               </td>
               <td class="target host-cell" data-field="target" title="<%= monitor.target %>"><%= monitor.target %></td>
@@ -435,15 +434,21 @@
     }
 
     function updateMonitorRow(row, monitor) {
-      const status = monitor.runtime && monitor.runtime.status ? monitor.runtime.status : 'unknown';
-      row.classList.remove('up', 'down', 'unknown');
-      row.classList.add(status);
+      const runtimeStatus = monitor.runtime && monitor.runtime.status ? monitor.runtime.status : 'unknown';
+      const statusClass = monitor.active ? runtimeStatus : 'paused';
+      const displayStatus = monitor.active
+        ? monitor.hasUnconfirmedFailures
+          ? 'up (confirming)'
+          : runtimeStatus
+        : 'paused';
+      row.classList.remove('up', 'down', 'unknown', 'paused');
+      row.classList.add(statusClass);
 
       const statusNode = row.querySelector('[data-field="status"]');
       if (statusNode) {
-        statusNode.classList.remove('up', 'down', 'unknown');
-        statusNode.classList.add(status);
-        statusNode.textContent = monitor.hasUnconfirmedFailures ? 'up (confirming)' : status;
+        statusNode.classList.remove('up', 'down', 'unknown', 'paused');
+        statusNode.classList.add(statusClass);
+        statusNode.textContent = displayStatus;
       }
 
       const nameNode = row.querySelector('[data-field="name"]');
@@ -462,13 +467,6 @@
         typeNode.textContent = monitor.checkType;
       }
 
-      const activeChip = row.querySelector('[data-field="active-chip"]');
-      if (activeChip) {
-        activeChip.classList.remove('active', 'paused');
-        activeChip.classList.add(monitor.active ? 'active' : 'paused');
-        activeChip.textContent = monitor.active ? 'Active' : 'Paused';
-      }
-
       const incidentsRow = document.querySelector(`[data-incidents-row-for="${monitor.id}"]`);
       const toggleLabel = incidentsRow ? incidentsRow.querySelector('[data-field="toggle-label"]') : null;
       if (toggleLabel) {
@@ -483,7 +481,7 @@
 
       const outageLabel = row.querySelector('[data-field="outage-label"]');
       const outageDuration = row.querySelector('[data-field="outage-duration"]');
-      if (status === 'down' && monitor.outage && monitor.outage.startedAt) {
+      if (statusClass === 'down' && monitor.outage && monitor.outage.startedAt) {
         if (outageLabel) {
           outageLabel.innerHTML = `<time class="js-local-time" datetime="${escapeHtml(monitor.outage.startedAt)}" data-style="datetime">${escapeHtml(monitor.outage.startedAt)}</time>`;
         }

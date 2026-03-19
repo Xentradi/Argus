@@ -173,6 +173,10 @@ function buildDashboardSnapshot({ eventsPage = 1, includeEvents = true, includeI
     const bucketKey = effectiveGroup ? effectiveGroup.id : 'ungrouped';
     const bucketName = effectiveGroup ? effectiveGroup.name : 'Ungrouped';
     const status = monitor.runtime.status || 'unknown';
+    const isPaused = !monitor.active;
+    const statusClass = isPaused ? 'paused' : status;
+    const hasUnconfirmedFailures = !isPaused && status === 'up' && Boolean(monitor.runtime.lastError);
+    const displayStatus = isPaused ? 'paused' : hasUnconfirmedFailures ? 'up (confirming)' : status;
     const openIncident = openIncidentsByMonitorId.get(monitor.id) || null;
     const downSince = openIncident
       ? openIncident.startedAt
@@ -190,6 +194,8 @@ function buildDashboardSnapshot({ eventsPage = 1, includeEvents = true, includeI
       checkType: monitor.checkType,
       target: monitorTarget(monitor) || '-',
       active: monitor.active,
+      statusClass,
+      displayStatus,
       runtime: {
         status,
         lastCheckAt: monitor.runtime.lastCheckAt || null,
@@ -201,11 +207,11 @@ function buildDashboardSnapshot({ eventsPage = 1, includeEvents = true, includeI
         lastFailureAt: monitor.runtime.lastFailureAt || null,
         lastSuccessAt: monitor.runtime.lastSuccessAt || null
       },
-      hasUnconfirmedFailures: status === 'up' && Boolean(monitor.runtime.lastError),
+      hasUnconfirmedFailures,
       outage: {
-        active: status === 'down',
+        active: !isPaused && status === 'down',
         startedAt: downSince,
-        durationSeconds: status === 'down' ? outageSeconds : null
+        durationSeconds: !isPaused && status === 'down' ? outageSeconds : null
       }
     };
 
@@ -244,13 +250,13 @@ function buildDashboardSnapshot({ eventsPage = 1, includeEvents = true, includeI
   const summary = {
     total: serializedMonitors.length,
     groups: groupedMonitors.length,
-    up: serializedMonitors.filter((monitor) => monitor.runtime.status === 'up').length,
-    down: serializedMonitors.filter((monitor) => monitor.runtime.status === 'down').length,
-    unknown: serializedMonitors.filter((monitor) => monitor.runtime.status === 'unknown').length
+    up: serializedMonitors.filter((monitor) => monitor.statusClass === 'up').length,
+    down: serializedMonitors.filter((monitor) => monitor.statusClass === 'down').length,
+    unknown: serializedMonitors.filter((monitor) => monitor.statusClass === 'unknown' || monitor.statusClass === 'paused').length
   };
 
   const activeOutages = serializedMonitors
-    .filter((monitor) => monitor.runtime.status === 'down')
+    .filter((monitor) => monitor.active && monitor.runtime.status === 'down')
     .map((monitor) => ({
       monitorId: monitor.id,
       monitorName: monitor.name,
@@ -1001,8 +1007,8 @@ app.post('/monitors/:id/toggle', requireAuth, (req, res) => {
   store.addEvent({
     monitorId: updated.id,
     monitorName: updated.name,
-    eventType: updated.active ? 'monitor_enabled' : 'monitor_disabled',
-    message: updated.active ? 'Monitor enabled' : 'Monitor disabled',
+    eventType: updated.active ? 'monitor_resumed' : 'monitor_paused',
+    message: updated.active ? 'Monitor resumed' : 'Monitor paused',
     details: {
       target: monitorTarget(updated)
     }
@@ -1010,7 +1016,7 @@ app.post('/monitors/:id/toggle', requireAuth, (req, res) => {
 
   engine.syncMonitors();
 
-  setFlash(req, 'success', updated.active ? 'Monitor enabled.' : 'Monitor disabled.');
+  setFlash(req, 'success', updated.active ? 'Monitor resumed.' : 'Monitor paused.');
   res.redirect('/');
 });
 

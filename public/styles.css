@@ -402,6 +402,11 @@ th {
   color: var(--status-unknown-text);
 }
 
+.status.paused {
+  background: rgba(109, 90, 168, 0.32);
+  color: #dfd5ff;
+}
+
 .row-actions {
   display: flex;
   gap: 0.45rem;
@@ -582,7 +587,7 @@ textarea:focus {
 }
 
 .monitor-table .status-cell {
-  width: 148px;
+  width: 116px;
 }
 
 .monitor-row.down {
@@ -591,6 +596,10 @@ textarea:focus {
 
 .monitor-row.up {
   background: rgba(61, 220, 255, 0.05);
+}
+
+.monitor-row.paused {
+  background: rgba(109, 90, 168, 0.08);
 }
 
 .monitor-row {
@@ -613,27 +622,6 @@ textarea:focus {
 
 .outage-cell .cell-sub {
   margin-top: 0.2rem;
-}
-
-.monitor-chip {
-  display: inline-block;
-  margin-left: 0.35rem;
-  border-radius: 1px;
-  padding: 0.12rem 0.44rem;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.monitor-chip.active {
-  background: rgba(61, 220, 255, 0.15);
-  color: #9ceeff;
-}
-
-.monitor-chip.paused {
-  background: rgba(109, 90, 168, 0.24);
-  color: #d4c9ff;
 }
 
 .action-menu {
