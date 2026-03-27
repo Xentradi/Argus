@@ -229,3 +229,80 @@ test('calculateMonitorUptimeStats includes both closed and open incidents', () =
   assert.equal(stats.downtimeMs, 15 * 60 * 1000);
   assert.equal(stats.uptimeRatio, 0.5);
 });
+
+test('scoped listMonitors only returns monitors for the requested user', () => {
+  const alice = store.createUser({
+    username: 'alice',
+    passwordHash: 'hash-a',
+    totpSecret: 'SECRETALICE'
+  });
+  const bob = store.createUser({
+    username: 'bob',
+    passwordHash: 'hash-b',
+    totpSecret: 'SECRETB0B'
+  });
+
+  const aliceGroup = store.createGroup({
+    userId: alice.id,
+    name: 'Alice Group',
+    webhookType: 'slack',
+    webhookUrl: 'https://example.invalid/alice'
+  });
+  const bobGroup = store.createGroup({
+    userId: bob.id,
+    name: 'Bob Group',
+    webhookType: 'discord',
+    webhookUrl: 'https://example.invalid/bob'
+  });
+
+  store.createMonitor({
+    userId: alice.id,
+    name: 'Alice API',
+    groupId: aliceGroup.id,
+    groupName: aliceGroup.name,
+    checkType: 'http',
+    url: 'https://example.com/alice',
+    webhookType: 'slack',
+    webhookUrl: 'https://example.invalid/alice'
+  });
+
+  store.createMonitor({
+    userId: bob.id,
+    name: 'Bob API',
+    groupId: bobGroup.id,
+    groupName: bobGroup.name,
+    checkType: 'http',
+    url: 'https://example.com/bob',
+    webhookType: 'discord',
+    webhookUrl: 'https://example.invalid/bob'
+  });
+
+  const aliceMonitors = store.listMonitors(alice.id);
+  const bobMonitors = store.listMonitors(bob.id);
+
+  assert.equal(aliceMonitors.length, 1);
+  assert.equal(aliceMonitors[0].name, 'Alice API');
+  assert.equal(bobMonitors.length, 1);
+  assert.equal(bobMonitors[0].name, 'Bob API');
+});
+
+test('api key authentication validates token and binds to owner', () => {
+  const user = store.createUser({
+    username: 'apiowner',
+    passwordHash: 'hash-api',
+    totpSecret: 'SECRETAPI'
+  });
+
+  const created = store.createApiKey({
+    userId: user.id,
+    name: 'integration'
+  });
+
+  const auth = store.authenticateApiKey(created.token);
+  assert.ok(auth);
+  assert.equal(auth.userId, user.id);
+  assert.equal(auth.name, 'integration');
+
+  const invalid = store.authenticateApiKey(`${created.token}tampered`);
+  assert.equal(invalid, null);
+});

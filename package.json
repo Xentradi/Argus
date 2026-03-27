@@ -9,7 +9,8 @@
     "dev": "nodemon src/app.js",
     "test": "node --test",
     "smoke": "node scripts/smoke-check.js",
-    "seed": "node scripts/seed-monitors.js"
+    "seed": "node scripts/seed-monitors.js",
+    "create-api-key": "node scripts/create-api-key.js"
   },
   "engines": {
     "node": ">=18"

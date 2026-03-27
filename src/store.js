@@ -47,6 +47,7 @@ class DataStore {
 
       CREATE TABLE IF NOT EXISTS monitor_groups (
         id TEXT PRIMARY KEY,
+        user_id TEXT,
         name TEXT NOT NULL UNIQUE,
         webhook_type TEXT NOT NULL DEFAULT 'slack',
         webhook_url TEXT NOT NULL DEFAULT '',
@@ -56,6 +57,7 @@ class DataStore {
 
       CREATE TABLE IF NOT EXISTS monitors (
         id TEXT PRIMARY KEY,
+        user_id TEXT,
         name TEXT NOT NULL,
         group_name TEXT NOT NULL DEFAULT 'Default',
         group_id TEXT,
@@ -88,6 +90,7 @@ class DataStore {
 
       CREATE TABLE IF NOT EXISTS incidents (
         id TEXT PRIMARY KEY,
+        user_id TEXT,
         monitor_id TEXT NOT NULL,
         monitor_name TEXT NOT NULL,
         started_at TEXT NOT NULL,
@@ -104,6 +107,7 @@ class DataStore {
 
       CREATE TABLE IF NOT EXISTS events (
         id TEXT PRIMARY KEY,
+        user_id TEXT,
         monitor_id TEXT,
         monitor_name TEXT,
         event_type TEXT NOT NULL,
@@ -114,9 +118,11 @@ class DataStore {
 
       CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
       CREATE INDEX IF NOT EXISTS idx_events_monitor ON events(monitor_id);
+      CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id);
 
       CREATE TABLE IF NOT EXISTS status_pages (
         id TEXT PRIMARY KEY,
+        user_id TEXT,
         name TEXT NOT NULL,
         slug TEXT NOT NULL UNIQUE,
         created_at TEXT NOT NULL,
@@ -133,8 +139,24 @@ class DataStore {
       );
 
       CREATE INDEX IF NOT EXISTS idx_status_pages_slug ON status_pages(slug);
+      CREATE INDEX IF NOT EXISTS idx_status_pages_user ON status_pages(user_id);
       CREATE INDEX IF NOT EXISTS idx_status_page_monitors_page ON status_page_monitors(status_page_id);
       CREATE INDEX IF NOT EXISTS idx_status_page_monitors_monitor ON status_page_monitors(monitor_id);
+
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        key_prefix TEXT NOT NULL,
+        salt TEXT NOT NULL,
+        key_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_used_at TEXT,
+        revoked_at TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
+      CREATE INDEX IF NOT EXISTS idx_api_keys_revoked ON api_keys(revoked_at);
     `);
 
     this.migrateIncidentsTableIfNeeded();
@@ -142,6 +164,7 @@ class DataStore {
     this.migrateMonitorsGroupIdColumnIfNeeded();
     this.migrateMonitorsSortOrderColumnIfNeeded();
     this.migrateMonitorsFirstSuccessColumnIfNeeded();
+    this.migrateOwnershipColumnsIfNeeded();
     this.migrateLegacyGroupsIfNeeded();
     this.ensureMonitorIndexes();
   }
@@ -257,6 +280,76 @@ class DataStore {
       .run();
   }
 
+  migrateOwnershipColumnsIfNeeded() {
+    const defaultOwnerRow = this.db
+      .prepare('SELECT id FROM users ORDER BY datetime(created_at) ASC LIMIT 1')
+      .get();
+    const defaultOwnerId = defaultOwnerRow ? defaultOwnerRow.id : null;
+
+    const monitorsColumns = this.db.prepare("PRAGMA table_info('monitors')").all();
+    if (!monitorsColumns.some((column) => column.name === 'user_id')) {
+      this.db.prepare('ALTER TABLE monitors ADD COLUMN user_id TEXT').run();
+    }
+
+    const groupsColumns = this.db.prepare("PRAGMA table_info('monitor_groups')").all();
+    if (!groupsColumns.some((column) => column.name === 'user_id')) {
+      this.db.prepare('ALTER TABLE monitor_groups ADD COLUMN user_id TEXT').run();
+    }
+
+    const statusPageColumns = this.db.prepare("PRAGMA table_info('status_pages')").all();
+    if (!statusPageColumns.some((column) => column.name === 'user_id')) {
+      this.db.prepare('ALTER TABLE status_pages ADD COLUMN user_id TEXT').run();
+    }
+
+    const incidentColumns = this.db.prepare("PRAGMA table_info('incidents')").all();
+    if (!incidentColumns.some((column) => column.name === 'user_id')) {
+      this.db.prepare('ALTER TABLE incidents ADD COLUMN user_id TEXT').run();
+    }
+
+    const eventColumns = this.db.prepare("PRAGMA table_info('events')").all();
+    if (!eventColumns.some((column) => column.name === 'user_id')) {
+      this.db.prepare('ALTER TABLE events ADD COLUMN user_id TEXT').run();
+    }
+
+    if (!defaultOwnerId) {
+      return;
+    }
+
+    this.db.prepare('UPDATE monitors SET user_id = ? WHERE user_id IS NULL').run(defaultOwnerId);
+    this.db.prepare('UPDATE monitor_groups SET user_id = ? WHERE user_id IS NULL').run(defaultOwnerId);
+    this.db.prepare('UPDATE status_pages SET user_id = ? WHERE user_id IS NULL').run(defaultOwnerId);
+
+    this.db
+      .prepare(
+        `
+          UPDATE incidents
+          SET user_id = (
+            SELECT monitors.user_id
+            FROM monitors
+            WHERE monitors.id = incidents.monitor_id
+          )
+          WHERE user_id IS NULL
+        `
+      )
+      .run();
+    this.db.prepare('UPDATE incidents SET user_id = ? WHERE user_id IS NULL').run(defaultOwnerId);
+
+    this.db
+      .prepare(
+        `
+          UPDATE events
+          SET user_id = (
+            SELECT monitors.user_id
+            FROM monitors
+            WHERE monitors.id = events.monitor_id
+          )
+          WHERE user_id IS NULL
+        `
+      )
+      .run();
+    this.db.prepare('UPDATE events SET user_id = ? WHERE user_id IS NULL').run(defaultOwnerId);
+  }
+
   migrateLegacyGroupsIfNeeded() {
     const legacyGroupNames = this.db
       .prepare(
@@ -334,6 +427,9 @@ class DataStore {
 
   ensureMonitorIndexes() {
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_monitors_group_order ON monitors(group_id, sort_order, created_at)');
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_monitors_user ON monitors(user_id)');
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_groups_user ON monitor_groups(user_id)');
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_incidents_user ON incidents(user_id)');
   }
 
   hasUsers() {
@@ -366,6 +462,16 @@ class DataStore {
     const generated = crypto.randomBytes(32).toString('hex');
     this.setMeta('session_secret', generated);
     return generated;
+  }
+
+  resolveOwnerUserId(candidateUserId) {
+    const trimmed = String(candidateUserId || '').trim();
+    if (trimmed) {
+      return trimmed;
+    }
+
+    const row = this.db.prepare('SELECT id FROM users ORDER BY datetime(created_at) ASC LIMIT 1').get();
+    return row ? row.id : null;
   }
 
   createUser({ username, passwordHash, totpSecret }) {
@@ -440,9 +546,102 @@ class DataStore {
     };
   }
 
+  hashApiKeySecret(secret, saltBase64) {
+    const salt = Buffer.from(String(saltBase64 || ''), 'base64');
+    return crypto.pbkdf2Sync(String(secret || ''), salt, 120000, 32, 'sha256').toString('base64');
+  }
+
+  createApiKey({ userId, name = 'default' }) {
+    const trimmedUserId = String(userId || '').trim();
+    if (!trimmedUserId) {
+      throw new Error('User id is required.');
+    }
+
+    const user = this.findUserById(trimmedUserId);
+    if (!user) {
+      throw new Error('User not found.');
+    }
+
+    const now = nowIso();
+    const keyId = crypto.randomUUID();
+    const secret = crypto.randomBytes(32).toString('hex');
+    const salt = crypto.randomBytes(16).toString('base64');
+    const keyHash = this.hashApiKeySecret(secret, salt);
+    const token = `argus_${keyId}.${secret}`;
+
+    this.db
+      .prepare(
+        `
+          INSERT INTO api_keys (id, user_id, name, key_prefix, salt, key_hash, created_at, last_used_at, revoked_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)
+        `
+      )
+      .run(keyId, trimmedUserId, String(name || 'default').trim() || 'default', token.slice(0, 16), salt, keyHash, now);
+
+    return {
+      id: keyId,
+      userId: trimmedUserId,
+      name: String(name || 'default').trim() || 'default',
+      token,
+      createdAt: now
+    };
+  }
+
+  authenticateApiKey(token) {
+    const value = String(token || '').trim();
+    if (!value.startsWith('argus_')) {
+      return null;
+    }
+
+    const dotIndex = value.indexOf('.');
+    if (dotIndex < 0) {
+      return null;
+    }
+
+    const keyId = value.slice('argus_'.length, dotIndex);
+    const secret = value.slice(dotIndex + 1);
+    if (!keyId || !secret) {
+      return null;
+    }
+
+    const row = this.db
+      .prepare(
+        `
+          SELECT id, user_id, name, salt, key_hash, created_at, last_used_at
+          FROM api_keys
+          WHERE id = ? AND revoked_at IS NULL
+          LIMIT 1
+        `
+      )
+      .get(keyId);
+    if (!row) {
+      return null;
+    }
+
+    const computedHash = this.hashApiKeySecret(secret, row.salt);
+    const actualHash = String(row.key_hash || '');
+    const computedBuffer = Buffer.from(computedHash);
+    const actualBuffer = Buffer.from(actualHash);
+    if (computedBuffer.length !== actualBuffer.length || !crypto.timingSafeEqual(computedBuffer, actualBuffer)) {
+      return null;
+    }
+
+    const now = nowIso();
+    this.db.prepare('UPDATE api_keys SET last_used_at = ? WHERE id = ?').run(now, row.id);
+
+    return {
+      id: row.id,
+      userId: row.user_id,
+      name: row.name,
+      createdAt: row.created_at,
+      lastUsedAt: now
+    };
+  }
+
   rowToGroup(row) {
     return {
       id: row.id,
+      userId: row.user_id || null,
       name: row.name,
       webhookType: row.webhook_type,
       webhookUrl: row.webhook_url,
@@ -454,6 +653,7 @@ class DataStore {
   rowToStatusPage(row) {
     return {
       id: row.id,
+      userId: row.user_id || null,
       name: row.name,
       slug: row.slug,
       createdAt: row.created_at,
@@ -461,39 +661,69 @@ class DataStore {
     };
   }
 
-  listGroups() {
-    const rows = this.db
-      .prepare(
-        `
-          SELECT id, name, webhook_type, webhook_url, created_at, updated_at
-          FROM monitor_groups
-          ORDER BY lower(name) ASC
-        `
-      )
-      .all();
+  listGroups(userId = null) {
+    const rows = userId
+      ? this.db
+          .prepare(
+            `
+              SELECT id, user_id, name, webhook_type, webhook_url, created_at, updated_at
+              FROM monitor_groups
+              WHERE user_id = ?
+              ORDER BY lower(name) ASC
+            `
+          )
+          .all(userId)
+      : this.db
+          .prepare(
+            `
+              SELECT id, user_id, name, webhook_type, webhook_url, created_at, updated_at
+              FROM monitor_groups
+              ORDER BY lower(name) ASC
+            `
+          )
+          .all();
 
     return rows.map((row) => this.rowToGroup(row));
   }
 
-  getGroupById(id) {
-    const row = this.db
-      .prepare('SELECT id, name, webhook_type, webhook_url, created_at, updated_at FROM monitor_groups WHERE id = ?')
-      .get(id);
+  getGroupById(id, userId = null) {
+    const row = userId
+      ? this.db
+          .prepare(
+            'SELECT id, user_id, name, webhook_type, webhook_url, created_at, updated_at FROM monitor_groups WHERE id = ? AND user_id = ?'
+          )
+          .get(id, userId)
+      : this.db
+          .prepare('SELECT id, user_id, name, webhook_type, webhook_url, created_at, updated_at FROM monitor_groups WHERE id = ?')
+          .get(id);
     return row ? this.rowToGroup(row) : null;
   }
 
-  listStatusPages() {
-    const rows = this.db
-      .prepare(
-        `
-          SELECT sp.id, sp.name, sp.slug, sp.created_at, sp.updated_at, COUNT(spm.monitor_id) AS monitor_count
-          FROM status_pages sp
-          LEFT JOIN status_page_monitors spm ON spm.status_page_id = sp.id
-          GROUP BY sp.id
-          ORDER BY lower(sp.name) ASC, datetime(sp.created_at) ASC
-        `
-      )
-      .all();
+  listStatusPages(userId = null) {
+    const rows = userId
+      ? this.db
+          .prepare(
+            `
+              SELECT sp.id, sp.user_id, sp.name, sp.slug, sp.created_at, sp.updated_at, COUNT(spm.monitor_id) AS monitor_count
+              FROM status_pages sp
+              LEFT JOIN status_page_monitors spm ON spm.status_page_id = sp.id
+              WHERE sp.user_id = ?
+              GROUP BY sp.id
+              ORDER BY lower(sp.name) ASC, datetime(sp.created_at) ASC
+            `
+          )
+          .all(userId)
+      : this.db
+          .prepare(
+            `
+              SELECT sp.id, sp.user_id, sp.name, sp.slug, sp.created_at, sp.updated_at, COUNT(spm.monitor_id) AS monitor_count
+              FROM status_pages sp
+              LEFT JOIN status_page_monitors spm ON spm.status_page_id = sp.id
+              GROUP BY sp.id
+              ORDER BY lower(sp.name) ASC, datetime(sp.created_at) ASC
+            `
+          )
+          .all();
 
     return rows.map((row) => ({
       ...this.rowToStatusPage(row),
@@ -522,8 +752,14 @@ class DataStore {
     return rows.map((row) => this.rowToMonitor(row));
   }
 
-  getStatusPageById(id) {
-    const row = this.db.prepare('SELECT id, name, slug, created_at, updated_at FROM status_pages WHERE id = ?').get(id);
+  getStatusPageById(id, userId = null) {
+    const row = userId
+      ? this.db
+          .prepare('SELECT id, user_id, name, slug, created_at, updated_at FROM status_pages WHERE id = ? AND user_id = ?')
+          .get(id, userId)
+      : this.db
+          .prepare('SELECT id, user_id, name, slug, created_at, updated_at FROM status_pages WHERE id = ?')
+          .get(id);
     if (!row) {
       return null;
     }
@@ -538,24 +774,32 @@ class DataStore {
     };
   }
 
-  getStatusPageBySlug(slug) {
+  getStatusPageBySlug(slug, userId = null) {
     const normalizedSlug = String(slug || '').trim().toLowerCase();
     if (!normalizedSlug) {
       return null;
     }
 
-    const row = this.db
-      .prepare('SELECT id, name, slug, created_at, updated_at FROM status_pages WHERE lower(slug) = lower(?) LIMIT 1')
-      .get(normalizedSlug);
+    const row = userId
+      ? this.db
+          .prepare(
+            'SELECT id, user_id, name, slug, created_at, updated_at FROM status_pages WHERE lower(slug) = lower(?) AND user_id = ? LIMIT 1'
+          )
+          .get(normalizedSlug, userId)
+      : this.db
+          .prepare('SELECT id, user_id, name, slug, created_at, updated_at FROM status_pages WHERE lower(slug) = lower(?) LIMIT 1')
+          .get(normalizedSlug);
 
     if (!row) {
       return null;
     }
 
-    return this.getStatusPageById(row.id);
+    return this.getStatusPageById(row.id, userId);
   }
 
-  createStatusPage({ name, slug, monitorIds }) {
+  createStatusPage({ userId, name, slug, monitorIds }) {
+    const trimmedUserId = this.resolveOwnerUserId(userId);
+
     const trimmedName = String(name || '').trim();
     const normalizedSlug = String(slug || '')
       .trim()
@@ -585,9 +829,13 @@ class DataStore {
     }
 
     const placeholders = requestedMonitorIds.map(() => '?').join(', ');
-    const monitorRows = this.db
-      .prepare(`SELECT id FROM monitors WHERE id IN (${placeholders})`)
-      .all(...requestedMonitorIds);
+    const monitorRows = trimmedUserId
+      ? this.db
+          .prepare(`SELECT id FROM monitors WHERE user_id = ? AND id IN (${placeholders})`)
+          .all(trimmedUserId, ...requestedMonitorIds)
+      : this.db
+          .prepare(`SELECT id FROM monitors WHERE id IN (${placeholders})`)
+          .all(...requestedMonitorIds);
     const validIds = new Set(monitorRows.map((row) => row.id));
     const selectedMonitorIds = requestedMonitorIds.filter((id) => validIds.has(id));
 
@@ -598,6 +846,7 @@ class DataStore {
     const now = nowIso();
     const statusPage = {
       id: crypto.randomUUID(),
+      userId: trimmedUserId,
       name: trimmedName,
       slug: normalizedSlug,
       createdAt: now,
@@ -608,11 +857,11 @@ class DataStore {
       this.db
         .prepare(
           `
-            INSERT INTO status_pages (id, name, slug, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO status_pages (id, user_id, name, slug, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
           `
         )
-        .run(statusPage.id, statusPage.name, statusPage.slug, statusPage.createdAt, statusPage.updatedAt);
+        .run(statusPage.id, statusPage.userId, statusPage.name, statusPage.slug, statusPage.createdAt, statusPage.updatedAt);
 
       const insertMonitor = this.db.prepare(
         `
@@ -628,34 +877,45 @@ class DataStore {
 
     create();
 
-    return this.getStatusPageById(statusPage.id);
+    return this.getStatusPageById(statusPage.id, trimmedUserId);
   }
 
-  deleteStatusPage(id) {
-    const existing = this.getStatusPageById(id);
+  deleteStatusPage(id, userId = null) {
+    const existing = this.getStatusPageById(id, userId);
     if (!existing) {
       return null;
     }
 
-    this.db.prepare('DELETE FROM status_pages WHERE id = ?').run(id);
+    if (existing.userId) {
+      this.db.prepare('DELETE FROM status_pages WHERE id = ? AND user_id = ?').run(id, existing.userId);
+    } else {
+      this.db.prepare('DELETE FROM status_pages WHERE id = ?').run(id);
+    }
     return existing;
   }
 
-  createGroup({ name, webhookType, webhookUrl }) {
+  createGroup({ userId, name, webhookType, webhookUrl }) {
+    const trimmedUserId = this.resolveOwnerUserId(userId);
+
     const trimmedName = String(name || '').trim();
     if (!trimmedName) {
       throw new Error('Group name is required.');
     }
 
-    const existing = this.db
-      .prepare('SELECT id FROM monitor_groups WHERE lower(name) = lower(?) LIMIT 1')
-      .get(trimmedName);
+    const existing = trimmedUserId
+      ? this.db
+          .prepare('SELECT id FROM monitor_groups WHERE lower(name) = lower(?) AND user_id = ? LIMIT 1')
+          .get(trimmedName, trimmedUserId)
+      : this.db
+          .prepare('SELECT id FROM monitor_groups WHERE lower(name) = lower(?) LIMIT 1')
+          .get(trimmedName);
     if (existing) {
       throw new Error('Group name already exists.');
     }
 
     const group = {
       id: crypto.randomUUID(),
+      userId: trimmedUserId,
       name: trimmedName,
       webhookType: webhookType === 'discord' ? 'discord' : 'slack',
       webhookUrl: String(webhookUrl || '').trim(),
@@ -666,17 +926,17 @@ class DataStore {
     this.db
       .prepare(
         `
-          INSERT INTO monitor_groups (id, name, webhook_type, webhook_url, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?)
+          INSERT INTO monitor_groups (id, user_id, name, webhook_type, webhook_url, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
         `
       )
-      .run(group.id, group.name, group.webhookType, group.webhookUrl, group.createdAt, group.updatedAt);
+      .run(group.id, group.userId, group.name, group.webhookType, group.webhookUrl, group.createdAt, group.updatedAt);
 
     return group;
   }
 
-  updateGroup(id, patch) {
-    const current = this.getGroupById(id);
+  updateGroup(id, patch, userId = null) {
+    const current = this.getGroupById(id, userId);
     if (!current) {
       return null;
     }
@@ -694,54 +954,96 @@ class DataStore {
       throw new Error('Group name is required.');
     }
 
-    const nameConflict = this.db
-      .prepare('SELECT id FROM monitor_groups WHERE lower(name) = lower(?) AND id != ? LIMIT 1')
-      .get(next.name, id);
+    const nameConflict = current.userId
+      ? this.db
+          .prepare('SELECT id FROM monitor_groups WHERE lower(name) = lower(?) AND id != ? AND user_id = ? LIMIT 1')
+          .get(next.name, id, current.userId)
+      : this.db
+          .prepare('SELECT id FROM monitor_groups WHERE lower(name) = lower(?) AND id != ? LIMIT 1')
+          .get(next.name, id);
     if (nameConflict) {
       throw new Error('Group name already exists.');
     }
 
-    this.db
-      .prepare(
-        `
-          UPDATE monitor_groups
-          SET name = ?, webhook_type = ?, webhook_url = ?, updated_at = ?
-          WHERE id = ?
-        `
-      )
-      .run(next.name, next.webhookType, next.webhookUrl, next.updatedAt, id);
+    if (current.userId) {
+      this.db
+        .prepare(
+          `
+            UPDATE monitor_groups
+            SET name = ?, webhook_type = ?, webhook_url = ?, updated_at = ?
+            WHERE id = ? AND user_id = ?
+          `
+        )
+        .run(next.name, next.webhookType, next.webhookUrl, next.updatedAt, id, current.userId);
+    } else {
+      this.db
+        .prepare(
+          `
+            UPDATE monitor_groups
+            SET name = ?, webhook_type = ?, webhook_url = ?, updated_at = ?
+            WHERE id = ?
+          `
+        )
+        .run(next.name, next.webhookType, next.webhookUrl, next.updatedAt, id);
+    }
 
-    this.db
-      .prepare(
-        `
-          UPDATE monitors
-          SET group_name = ?, webhook_type = ?, webhook_url = ?, updated_at = ?
-          WHERE group_id = ?
-        `
-      )
-      .run(next.name, next.webhookType, next.webhookUrl, nowIso(), id);
+    if (current.userId) {
+      this.db
+        .prepare(
+          `
+            UPDATE monitors
+            SET group_name = ?, webhook_type = ?, webhook_url = ?, updated_at = ?
+            WHERE group_id = ? AND user_id = ?
+          `
+        )
+        .run(next.name, next.webhookType, next.webhookUrl, nowIso(), id, current.userId);
+    } else {
+      this.db
+        .prepare(
+          `
+            UPDATE monitors
+            SET group_name = ?, webhook_type = ?, webhook_url = ?, updated_at = ?
+            WHERE group_id = ?
+          `
+        )
+        .run(next.name, next.webhookType, next.webhookUrl, nowIso(), id);
+    }
 
-    return this.getGroupById(id);
+    return this.getGroupById(id, current.userId);
   }
 
-  deleteGroup(id) {
-    const group = this.getGroupById(id);
+  deleteGroup(id, userId = null) {
+    const group = this.getGroupById(id, userId);
     if (!group) {
       return null;
     }
 
     const removeGroup = this.db.transaction(() => {
-      this.db
-        .prepare(
-          `
-            UPDATE monitors
-            SET group_id = NULL, group_name = '', webhook_type = ?, webhook_url = ?, updated_at = ?
-            WHERE group_id = ?
-          `
-        )
-        .run(group.webhookType, group.webhookUrl, nowIso(), id);
+      if (group.userId) {
+        this.db
+          .prepare(
+            `
+              UPDATE monitors
+              SET group_id = NULL, group_name = '', webhook_type = ?, webhook_url = ?, updated_at = ?
+              WHERE group_id = ? AND user_id = ?
+            `
+          )
+          .run(group.webhookType, group.webhookUrl, nowIso(), id, group.userId);
 
-      this.db.prepare('DELETE FROM monitor_groups WHERE id = ?').run(id);
+        this.db.prepare('DELETE FROM monitor_groups WHERE id = ? AND user_id = ?').run(id, group.userId);
+      } else {
+        this.db
+          .prepare(
+            `
+              UPDATE monitors
+              SET group_id = NULL, group_name = '', webhook_type = ?, webhook_url = ?, updated_at = ?
+              WHERE group_id = ?
+            `
+          )
+          .run(group.webhookType, group.webhookUrl, nowIso(), id);
+
+        this.db.prepare('DELETE FROM monitor_groups WHERE id = ?').run(id);
+      }
     });
 
     removeGroup();
@@ -751,6 +1053,7 @@ class DataStore {
   rowToMonitor(row) {
     return {
       id: row.id,
+      userId: row.user_id || null,
       name: row.name,
       groupId: row.group_id || null,
       groupName: row.group_name || '',
@@ -787,55 +1090,82 @@ class DataStore {
     };
   }
 
-  listMonitors() {
-    const rows = this.db
-      .prepare(
-        `
-          SELECT * FROM monitors
-          ORDER BY
-            CASE WHEN group_id IS NULL THEN 1 ELSE 0 END ASC,
-            lower(group_name) ASC,
-            sort_order ASC,
-            lower(name) ASC,
-            datetime(created_at) ASC
-        `
-      )
-      .all();
+  listMonitors(userId = null) {
+    const rows = userId
+      ? this.db
+          .prepare(
+            `
+              SELECT * FROM monitors
+              WHERE user_id = ?
+              ORDER BY
+                CASE WHEN group_id IS NULL THEN 1 ELSE 0 END ASC,
+                lower(group_name) ASC,
+                sort_order ASC,
+                lower(name) ASC,
+                datetime(created_at) ASC
+            `
+          )
+          .all(userId)
+      : this.db
+          .prepare(
+            `
+              SELECT * FROM monitors
+              ORDER BY
+                CASE WHEN group_id IS NULL THEN 1 ELSE 0 END ASC,
+                lower(group_name) ASC,
+                sort_order ASC,
+                lower(name) ASC,
+                datetime(created_at) ASC
+            `
+          )
+          .all();
 
     return rows.map((row) => this.rowToMonitor(row));
   }
 
-  getMonitorById(id) {
-    const row = this.db.prepare('SELECT * FROM monitors WHERE id = ?').get(id);
+  getMonitorById(id, userId = null) {
+    const row = userId
+      ? this.db.prepare('SELECT * FROM monitors WHERE id = ? AND user_id = ?').get(id, userId)
+      : this.db.prepare('SELECT * FROM monitors WHERE id = ?').get(id);
     return row ? this.rowToMonitor(row) : null;
   }
 
-  getNextMonitorSortOrder(groupId) {
+  getNextMonitorSortOrder(groupId, userId = null) {
     if (groupId) {
-      const row = this.db
-        .prepare('SELECT COALESCE(MAX(sort_order), 0) AS max_sort_order FROM monitors WHERE group_id = ?')
-        .get(groupId);
+      const row = userId
+        ? this.db
+            .prepare('SELECT COALESCE(MAX(sort_order), 0) AS max_sort_order FROM monitors WHERE group_id = ? AND user_id = ?')
+            .get(groupId, userId)
+        : this.db
+            .prepare('SELECT COALESCE(MAX(sort_order), 0) AS max_sort_order FROM monitors WHERE group_id = ?')
+            .get(groupId);
       return Number(row.max_sort_order || 0) + 1;
     }
 
-    const row = this.db
-      .prepare('SELECT COALESCE(MAX(sort_order), 0) AS max_sort_order FROM monitors WHERE group_id IS NULL')
-      .get();
+    const row = userId
+      ? this.db
+          .prepare('SELECT COALESCE(MAX(sort_order), 0) AS max_sort_order FROM monitors WHERE group_id IS NULL AND user_id = ?')
+          .get(userId)
+      : this.db
+          .prepare('SELECT COALESCE(MAX(sort_order), 0) AS max_sort_order FROM monitors WHERE group_id IS NULL')
+          .get();
     return Number(row.max_sort_order || 0) + 1;
   }
 
   createMonitor(payload) {
     const now = nowIso();
     const groupId = payload.groupId || null;
+    const userId = this.resolveOwnerUserId(payload.userId);
 
     const monitor = {
       id: crypto.randomUUID(),
+      userId,
       name: payload.name || 'Unnamed monitor',
       groupId,
       groupName: String(payload.groupName || '').trim(),
       sortOrder: Number.isFinite(Number(payload.sortOrder))
         ? Number(payload.sortOrder)
-        : this.getNextMonitorSortOrder(groupId),
+        : this.getNextMonitorSortOrder(groupId, userId),
       checkType: payload.checkType || 'http',
       host: payload.host || '',
       url: payload.url || '',
@@ -868,18 +1198,19 @@ class DataStore {
       .prepare(
         `
           INSERT INTO monitors (
-            id, name, group_name, group_id, sort_order, check_type, host, url, keyword,
+            id, user_id, name, group_name, group_id, sort_order, check_type, host, url, keyword,
             keyword_case_sensitive, http_status_mode, tls_error_as_failure,
             webhook_type, webhook_url, timeout_ms, active,
             created_at, updated_at,
             status, last_check_at, first_success_at, last_success_at, last_failure_at,
             last_error, last_response_ms, last_http_status,
             last_keyword_matched, last_tls_error, next_check_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `
       )
       .run(
         monitor.id,
+        monitor.userId,
         monitor.name,
         monitor.groupName,
         monitor.groupId,
@@ -913,8 +1244,8 @@ class DataStore {
     return monitor;
   }
 
-  updateMonitor(id, patch) {
-    const current = this.getMonitorById(id);
+  updateMonitor(id, patch, userId = null) {
+    const current = this.getMonitorById(id, userId);
     if (!current) {
       return null;
     }
@@ -925,7 +1256,7 @@ class DataStore {
       patch.sortOrder !== undefined
         ? Number(patch.sortOrder)
         : groupChanged
-          ? this.getNextMonitorSortOrder(targetGroupId)
+          ? this.getNextMonitorSortOrder(targetGroupId, current.userId)
           : current.sortOrder;
 
     const next = {
@@ -941,75 +1272,114 @@ class DataStore {
       updatedAt: nowIso()
     };
 
-    this.db
-      .prepare(
-        `
-          UPDATE monitors
-          SET
-            name = ?,
-            group_name = ?,
-            group_id = ?,
-            sort_order = ?,
-            check_type = ?,
-            host = ?,
-            url = ?,
-            keyword = ?,
-            keyword_case_sensitive = ?,
-            http_status_mode = ?,
-            tls_error_as_failure = ?,
-            webhook_type = ?,
-            webhook_url = ?,
-            timeout_ms = ?,
-            active = ?,
-            updated_at = ?,
-            status = ?,
-            last_check_at = ?,
-            first_success_at = ?,
-            last_success_at = ?,
-            last_failure_at = ?,
-            last_error = ?,
-            last_response_ms = ?,
-            last_http_status = ?,
-            last_keyword_matched = ?,
-            last_tls_error = ?,
-            next_check_at = ?
-          WHERE id = ?
-        `
-      )
-      .run(
-        next.name,
-        next.groupName,
-        next.groupId,
-        next.sortOrder,
-        next.checkType,
-        next.host,
-        next.url,
-        next.keyword,
-        toIntegerBoolean(next.keywordCaseSensitive),
-        next.httpStatusMode,
-        toIntegerBoolean(next.tlsErrorAsFailure),
-        next.webhookType,
-        next.webhookUrl,
-        next.timeoutMs,
-        toIntegerBoolean(next.active),
-        next.updatedAt,
-        next.runtime.status,
-        next.runtime.lastCheckAt,
-        next.runtime.firstSuccessAt,
-        next.runtime.lastSuccessAt,
-        next.runtime.lastFailureAt,
-        next.runtime.lastError,
-        next.runtime.lastResponseMs,
-        next.runtime.lastHttpStatus,
-        next.runtime.lastKeywordMatched === null
-          ? null
-          : toIntegerBoolean(next.runtime.lastKeywordMatched),
-        toIntegerBoolean(next.runtime.lastTlsError),
-        next.runtime.nextCheckAt,
-        id
-      );
+    const updateValues = [
+      next.name,
+      next.groupName,
+      next.groupId,
+      next.sortOrder,
+      next.checkType,
+      next.host,
+      next.url,
+      next.keyword,
+      toIntegerBoolean(next.keywordCaseSensitive),
+      next.httpStatusMode,
+      toIntegerBoolean(next.tlsErrorAsFailure),
+      next.webhookType,
+      next.webhookUrl,
+      next.timeoutMs,
+      toIntegerBoolean(next.active),
+      next.updatedAt,
+      next.runtime.status,
+      next.runtime.lastCheckAt,
+      next.runtime.firstSuccessAt,
+      next.runtime.lastSuccessAt,
+      next.runtime.lastFailureAt,
+      next.runtime.lastError,
+      next.runtime.lastResponseMs,
+      next.runtime.lastHttpStatus,
+      next.runtime.lastKeywordMatched === null ? null : toIntegerBoolean(next.runtime.lastKeywordMatched),
+      toIntegerBoolean(next.runtime.lastTlsError),
+      next.runtime.nextCheckAt,
+      id
+    ];
 
-    return this.getMonitorById(id);
+    if (current.userId) {
+      this.db
+        .prepare(
+          `
+            UPDATE monitors
+            SET
+              name = ?,
+              group_name = ?,
+              group_id = ?,
+              sort_order = ?,
+              check_type = ?,
+              host = ?,
+              url = ?,
+              keyword = ?,
+              keyword_case_sensitive = ?,
+              http_status_mode = ?,
+              tls_error_as_failure = ?,
+              webhook_type = ?,
+              webhook_url = ?,
+              timeout_ms = ?,
+              active = ?,
+              updated_at = ?,
+              status = ?,
+              last_check_at = ?,
+              first_success_at = ?,
+              last_success_at = ?,
+              last_failure_at = ?,
+              last_error = ?,
+              last_response_ms = ?,
+              last_http_status = ?,
+              last_keyword_matched = ?,
+              last_tls_error = ?,
+              next_check_at = ?
+            WHERE id = ? AND user_id = ?
+          `
+        )
+        .run(...updateValues, current.userId);
+    } else {
+      this.db
+        .prepare(
+          `
+            UPDATE monitors
+            SET
+              name = ?,
+              group_name = ?,
+              group_id = ?,
+              sort_order = ?,
+              check_type = ?,
+              host = ?,
+              url = ?,
+              keyword = ?,
+              keyword_case_sensitive = ?,
+              http_status_mode = ?,
+              tls_error_as_failure = ?,
+              webhook_type = ?,
+              webhook_url = ?,
+              timeout_ms = ?,
+              active = ?,
+              updated_at = ?,
+              status = ?,
+              last_check_at = ?,
+              first_success_at = ?,
+              last_success_at = ?,
+              last_failure_at = ?,
+              last_error = ?,
+              last_response_ms = ?,
+              last_http_status = ?,
+              last_keyword_matched = ?,
+              last_tls_error = ?,
+              next_check_at = ?
+            WHERE id = ?
+          `
+        )
+        .run(...updateValues);
+    }
+
+    return this.getMonitorById(id, current.userId);
   }
 
   updateMonitorRuntime(id, runtimePatch) {
@@ -1018,43 +1388,69 @@ class DataStore {
     });
   }
 
-  deleteMonitor(id) {
-    const existing = this.getMonitorById(id);
+  deleteMonitor(id, userId = null) {
+    const existing = this.getMonitorById(id, userId);
     if (!existing) {
       return null;
     }
 
-    this.db.prepare('DELETE FROM monitors WHERE id = ?').run(id);
+    if (existing.userId) {
+      this.db.prepare('DELETE FROM monitors WHERE id = ? AND user_id = ?').run(id, existing.userId);
+    } else {
+      this.db.prepare('DELETE FROM monitors WHERE id = ?').run(id);
+    }
     return existing;
   }
 
-  moveMonitorInGroup(id, direction) {
-    const monitor = this.getMonitorById(id);
+  moveMonitorInGroup(id, direction, userId = null) {
+    const monitor = this.getMonitorById(id, userId);
     if (!monitor) {
       return null;
     }
 
     const rows = monitor.groupId
-      ? this.db
-          .prepare(
-            `
-              SELECT id, sort_order, created_at, name
-              FROM monitors
-              WHERE group_id = ?
-              ORDER BY sort_order ASC, datetime(created_at) ASC, lower(name) ASC
-            `
-          )
-          .all(monitor.groupId)
-      : this.db
-          .prepare(
-            `
-              SELECT id, sort_order, created_at, name
-              FROM monitors
-              WHERE group_id IS NULL
-              ORDER BY sort_order ASC, datetime(created_at) ASC, lower(name) ASC
-            `
-          )
-          .all();
+      ? monitor.userId
+        ? this.db
+            .prepare(
+              `
+                SELECT id, sort_order, created_at, name
+                FROM monitors
+                WHERE group_id = ? AND user_id = ?
+                ORDER BY sort_order ASC, datetime(created_at) ASC, lower(name) ASC
+              `
+            )
+            .all(monitor.groupId, monitor.userId)
+        : this.db
+            .prepare(
+              `
+                SELECT id, sort_order, created_at, name
+                FROM monitors
+                WHERE group_id = ?
+                ORDER BY sort_order ASC, datetime(created_at) ASC, lower(name) ASC
+              `
+            )
+            .all(monitor.groupId)
+      : monitor.userId
+        ? this.db
+            .prepare(
+              `
+                SELECT id, sort_order, created_at, name
+                FROM monitors
+                WHERE group_id IS NULL AND user_id = ?
+                ORDER BY sort_order ASC, datetime(created_at) ASC, lower(name) ASC
+              `
+            )
+            .all(monitor.userId)
+        : this.db
+            .prepare(
+              `
+                SELECT id, sort_order, created_at, name
+                FROM monitors
+                WHERE group_id IS NULL
+                ORDER BY sort_order ASC, datetime(created_at) ASC, lower(name) ASC
+              `
+            )
+            .all();
 
     if (rows.length < 2) {
       return monitor;
@@ -1069,35 +1465,57 @@ class DataStore {
     normalize();
 
     const normalizedRows = monitor.groupId
-      ? this.db
-          .prepare(
-            `
-              SELECT id, sort_order
-              FROM monitors
-              WHERE group_id = ?
-              ORDER BY sort_order ASC
-            `
-          )
-          .all(monitor.groupId)
-      : this.db
-          .prepare(
-            `
-              SELECT id, sort_order
-              FROM monitors
-              WHERE group_id IS NULL
-              ORDER BY sort_order ASC
-            `
-          )
-          .all();
+      ? monitor.userId
+        ? this.db
+            .prepare(
+              `
+                SELECT id, sort_order
+                FROM monitors
+                WHERE group_id = ? AND user_id = ?
+                ORDER BY sort_order ASC
+              `
+            )
+            .all(monitor.groupId, monitor.userId)
+        : this.db
+            .prepare(
+              `
+                SELECT id, sort_order
+                FROM monitors
+                WHERE group_id = ?
+                ORDER BY sort_order ASC
+              `
+            )
+            .all(monitor.groupId)
+      : monitor.userId
+        ? this.db
+            .prepare(
+              `
+                SELECT id, sort_order
+                FROM monitors
+                WHERE group_id IS NULL AND user_id = ?
+                ORDER BY sort_order ASC
+              `
+            )
+            .all(monitor.userId)
+        : this.db
+            .prepare(
+              `
+                SELECT id, sort_order
+                FROM monitors
+                WHERE group_id IS NULL
+                ORDER BY sort_order ASC
+              `
+            )
+            .all();
 
     const currentIndex = normalizedRows.findIndex((row) => row.id === id);
     if (currentIndex < 0) {
-      return this.getMonitorById(id);
+      return this.getMonitorById(id, monitor.userId);
     }
 
     const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
     if (targetIndex < 0 || targetIndex >= normalizedRows.length) {
-      return this.getMonitorById(id);
+      return this.getMonitorById(id, monitor.userId);
     }
 
     const currentRow = normalizedRows[currentIndex];
@@ -1111,22 +1529,34 @@ class DataStore {
     });
 
     swap();
-    return this.getMonitorById(id);
+    return this.getMonitorById(id, monitor.userId);
   }
 
-  listIncidents(limit = 100) {
-    const rows = this.db
-      .prepare(
-        `
-          SELECT * FROM incidents
-          ORDER BY datetime(started_at) DESC
-          LIMIT ?
-        `
-      )
-      .all(limit);
+  listIncidents(limit = 100, userId = null) {
+    const rows = userId
+      ? this.db
+          .prepare(
+            `
+              SELECT * FROM incidents
+              WHERE user_id = ?
+              ORDER BY datetime(started_at) DESC
+              LIMIT ?
+            `
+          )
+          .all(userId, limit)
+      : this.db
+          .prepare(
+            `
+              SELECT * FROM incidents
+              ORDER BY datetime(started_at) DESC
+              LIMIT ?
+            `
+          )
+          .all(limit);
 
     return rows.map((row) => ({
       id: row.id,
+      userId: row.user_id || null,
       monitorId: row.monitor_id,
       monitorName: row.monitor_name,
       startedAt: row.started_at,
@@ -1139,19 +1569,30 @@ class DataStore {
     }));
   }
 
-  listOpenIncidents() {
-    const rows = this.db
-      .prepare(
-        `
-          SELECT * FROM incidents
-          WHERE ended_at IS NULL
-          ORDER BY datetime(started_at) DESC
-        `
-      )
-      .all();
+  listOpenIncidents(userId = null) {
+    const rows = userId
+      ? this.db
+          .prepare(
+            `
+              SELECT * FROM incidents
+              WHERE ended_at IS NULL AND user_id = ?
+              ORDER BY datetime(started_at) DESC
+            `
+          )
+          .all(userId)
+      : this.db
+          .prepare(
+            `
+              SELECT * FROM incidents
+              WHERE ended_at IS NULL
+              ORDER BY datetime(started_at) DESC
+            `
+          )
+          .all();
 
     return rows.map((row) => ({
       id: row.id,
+      userId: row.user_id || null,
       monitorId: row.monitor_id,
       monitorName: row.monitor_name,
       startedAt: row.started_at,
@@ -1164,9 +1605,10 @@ class DataStore {
     }));
   }
 
-  addIncident({ monitorId, monitorName, startedAt, downReason }) {
+  addIncident({ userId = null, monitorId, monitorName, startedAt, downReason }) {
     const incident = {
       id: crypto.randomUUID(),
+      userId: userId || null,
       monitorId,
       monitorName,
       startedAt,
@@ -1182,14 +1624,15 @@ class DataStore {
       .prepare(
         `
           INSERT INTO incidents (
-            id, monitor_id, monitor_name, started_at, ended_at,
+            id, user_id, monitor_id, monitor_name, started_at, ended_at,
             duration_seconds, down_reason, recovery_reason,
             created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `
       )
       .run(
         incident.id,
+        incident.userId,
         incident.monitorId,
         incident.monitorName,
         incident.startedAt,
@@ -1222,6 +1665,7 @@ class DataStore {
 
     return {
       id: row.id,
+      userId: row.user_id || null,
       monitorId: row.monitor_id,
       monitorName: row.monitor_name,
       startedAt: row.started_at,
@@ -1243,6 +1687,7 @@ class DataStore {
     if (incident.ended_at) {
       return {
         id: incident.id,
+        userId: incident.user_id || null,
         monitorId: incident.monitor_id,
         monitorName: incident.monitor_name,
         startedAt: incident.started_at,
@@ -1276,6 +1721,7 @@ class DataStore {
 
     return {
       id: incident.id,
+      userId: incident.user_id || null,
       monitorId: incident.monitor_id,
       monitorName: incident.monitor_name,
       startedAt: incident.started_at,
@@ -1327,8 +1773,8 @@ class DataStore {
     return recoveryTimesByMonitorId;
   }
 
-  calculateMonitorUptimeStats(monitorId, at = nowIso()) {
-    const monitor = this.getMonitorById(monitorId);
+  calculateMonitorUptimeStats(monitorId, at = nowIso(), userId = null) {
+    const monitor = this.getMonitorById(monitorId, userId);
     if (!monitor) {
       return null;
     }
@@ -1390,9 +1836,10 @@ class DataStore {
     };
   }
 
-  addEvent({ monitorId = null, monitorName = null, eventType, message, details = null }) {
+  addEvent({ userId = null, monitorId = null, monitorName = null, eventType, message, details = null }) {
     const event = {
       id: crypto.randomUUID(),
+      userId: userId || null,
       monitorId,
       monitorName,
       eventType,
@@ -1404,12 +1851,13 @@ class DataStore {
     this.db
       .prepare(
         `
-          INSERT INTO events (id, monitor_id, monitor_name, event_type, message, details_json, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO events (id, user_id, monitor_id, monitor_name, event_type, message, details_json, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `
       )
       .run(
         event.id,
+        event.userId,
         event.monitorId,
         event.monitorName,
         event.eventType,
@@ -1421,26 +1869,42 @@ class DataStore {
     return event;
   }
 
-  countEvents() {
-    const row = this.db.prepare('SELECT COUNT(*) AS count FROM events').get();
+  countEvents(userId = null) {
+    const row = userId
+      ? this.db.prepare('SELECT COUNT(*) AS count FROM events WHERE user_id = ?').get(userId)
+      : this.db.prepare('SELECT COUNT(*) AS count FROM events').get();
     return Number(row.count || 0);
   }
 
-  listEvents(limit = 200, offset = 0) {
-    const rows = this.db
-      .prepare(
-        `
-          SELECT id, monitor_id, monitor_name, event_type, message, details_json, created_at
-          FROM events
-          ORDER BY datetime(created_at) DESC
-          LIMIT ?
-          OFFSET ?
-        `
-      )
-      .all(limit, offset);
+  listEvents(limit = 200, offset = 0, userId = null) {
+    const rows = userId
+      ? this.db
+          .prepare(
+            `
+              SELECT id, user_id, monitor_id, monitor_name, event_type, message, details_json, created_at
+              FROM events
+              WHERE user_id = ?
+              ORDER BY datetime(created_at) DESC
+              LIMIT ?
+              OFFSET ?
+            `
+          )
+          .all(userId, limit, offset)
+      : this.db
+          .prepare(
+            `
+              SELECT id, user_id, monitor_id, monitor_name, event_type, message, details_json, created_at
+              FROM events
+              ORDER BY datetime(created_at) DESC
+              LIMIT ?
+              OFFSET ?
+            `
+          )
+          .all(limit, offset);
 
     return rows.map((row) => ({
       id: row.id,
+      userId: row.user_id || null,
       monitorId: row.monitor_id,
       monitorName: row.monitor_name,
       eventType: row.event_type,

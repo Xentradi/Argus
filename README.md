@@ -61,6 +61,27 @@ On first launch, you will be redirected to `/setup` to create the admin user and
 npm test
 ```
 
+## API (Key Auth + Swagger)
+
+Argus provides a key-authenticated API under `/api/v1` with user ownership enforcement. A key can only read or mutate that key owner’s monitors/groups/status pages/incidents/events.
+
+Create a key for an existing user:
+
+```bash
+npm run create-api-key -- <username> [key-name]
+```
+
+Use the returned token as a bearer token:
+
+```bash
+Authorization: Bearer argus_<key-id>.<secret>
+```
+
+Swagger/OpenAPI docs:
+
+- OpenAPI JSON: `/api/openapi.json`
+- Swagger UI: `/api/docs`
+
 ## Smoke Checks
 
 Runs one-off checks from a local JSON file (not committed):

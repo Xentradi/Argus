@@ -299,6 +299,7 @@ class MonitorEngine {
     const openIncident = this.store.getOpenIncidentByMonitorId(monitor.id);
     if (openIncident) {
       this.store.addEvent({
+        userId: monitor.userId || null,
         monitorId: monitor.id,
         monitorName: monitor.name,
         eventType: 'monitor_down_suppressed',
@@ -311,6 +312,7 @@ class MonitorEngine {
     }
 
     this.store.addIncident({
+      userId: monitor.userId || null,
       monitorId: monitor.id,
       monitorName: monitor.name,
       startedAt: at,
@@ -318,6 +320,7 @@ class MonitorEngine {
     });
 
     this.store.addEvent({
+      userId: monitor.userId || null,
       monitorId: monitor.id,
       monitorName: monitor.name,
       eventType: 'monitor_down',
@@ -342,6 +345,7 @@ class MonitorEngine {
     });
 
     this.store.addEvent({
+      userId: monitor.userId || null,
       monitorId: monitor.id,
       monitorName: monitor.name,
       eventType: alertResult.ok ? 'alert_down_sent' : 'alert_down_failed',
@@ -386,6 +390,7 @@ class MonitorEngine {
     });
 
     this.store.addEvent({
+      userId: monitor.userId || null,
       monitorId: monitor.id,
       monitorName: monitor.name,
       eventType: 'monitor_recovered',
@@ -410,6 +415,7 @@ class MonitorEngine {
     });
 
     this.store.addEvent({
+      userId: monitor.userId || null,
       monitorId: monitor.id,
       monitorName: monitor.name,
       eventType: alertResult.ok ? 'alert_recovery_sent' : 'alert_recovery_failed',
