@@ -118,7 +118,6 @@ class DataStore {
 
       CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
       CREATE INDEX IF NOT EXISTS idx_events_monitor ON events(monitor_id);
-      CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id);
 
       CREATE TABLE IF NOT EXISTS status_pages (
         id TEXT PRIMARY KEY,
@@ -139,7 +138,6 @@ class DataStore {
       );
 
       CREATE INDEX IF NOT EXISTS idx_status_pages_slug ON status_pages(slug);
-      CREATE INDEX IF NOT EXISTS idx_status_pages_user ON status_pages(user_id);
       CREATE INDEX IF NOT EXISTS idx_status_page_monitors_page ON status_page_monitors(status_page_id);
       CREATE INDEX IF NOT EXISTS idx_status_page_monitors_monitor ON status_page_monitors(monitor_id);
 
@@ -430,6 +428,8 @@ class DataStore {
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_monitors_user ON monitors(user_id)');
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_groups_user ON monitor_groups(user_id)');
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_incidents_user ON incidents(user_id)');
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id)');
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_status_pages_user ON status_pages(user_id)');
   }
 
   hasUsers() {
