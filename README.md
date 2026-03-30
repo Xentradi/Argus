@@ -35,7 +35,7 @@ For most health endpoints, `2xx` is generally the better default. For pages that
 
 ## Requirements
 
-- Node.js 18+
+- Node.js 20.x or 22.x (LTS)
 - Network access from this server to monitored hosts and webhook endpoints
 - `ping` binary installed on the monitoring host for ICMP checks
 
@@ -142,6 +142,20 @@ Example `./local/seed-monitors.json`:
 pm2 start ecosystem.config.js
 pm2 save
 pm2 startup
+```
+
+## After Node Major Upgrades
+
+Argus uses native SQLite addons (`better-sqlite3` + `sqlite3` via `connect-sqlite3`). After a Node major upgrade on a host, reinstall/rebuild before reloading PM2:
+
+```bash
+npm run node-upgrade:recover
+```
+
+Or run the bundled helper on the server:
+
+```bash
+./scripts/node-upgrade-recover.sh
 ```
 
 ## Environment Variables
