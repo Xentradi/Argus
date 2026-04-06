@@ -148,9 +148,19 @@ pm2 startup
 
 On Orion, the live checkout and PM2 process run as `xen` from `/home/xen/apps/Argus`.
 
+Use the guarded deploy helper instead of logging in as `root`:
+
 ```bash
-ssh root@orion.corp.xentradi.com 'su - xen -c "cd /home/xen/apps/Argus && git pull --ff-only && pm2 startOrReload ecosystem.config.js && curl -fsS http://127.0.0.1:3000/healthz"'
+npm run deploy:orion
 ```
+
+If you need to run it manually on `orion`, use `xen` directly:
+
+```bash
+ssh xen@orion.corp.xentradi.com 'cd /home/xen/apps/Argus && ./scripts/deploy-orion.sh'
+```
+
+The helper refuses to run as `root`, checks for a clean `master` checkout, and only then pulls, reloads PM2, and health-checks the local port.
 
 ## After Node Major Upgrades
 

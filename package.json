@@ -11,6 +11,7 @@
     "smoke": "node scripts/smoke-check.js",
     "seed": "node scripts/seed-monitors.js",
     "create-api-key": "node scripts/create-api-key.js",
+    "deploy:orion": "ssh xen@orion.corp.xentradi.com 'cd /home/xen/apps/Argus && ./scripts/deploy-orion.sh'",
     "rebuild-native": "npm rebuild better-sqlite3 sqlite3",
     "node-upgrade:recover": "npm ci && npm run rebuild-native"
   },

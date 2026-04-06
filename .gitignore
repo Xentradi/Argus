@@ -12,3 +12,4 @@ img/
 *.db-shm
 *.db-wal
 agents.md
+.claude/
