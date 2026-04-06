@@ -51,6 +51,32 @@
       <input type="number" name="timeoutMs" min="1000" max="120000" step="1000" value="<%= monitor.timeoutMs %>" required />
     </label>
 
+    <label>
+      Min downtime before alert (ms)
+      <input
+        type="number"
+        name="minDowntimeMs"
+        min="1000"
+        max="3600000"
+        step="1000"
+        value="<%= monitor.minDowntimeMs === null || monitor.minDowntimeMs === undefined ? '' : monitor.minDowntimeMs %>"
+        placeholder="Default: <%= minDowntimeDefaultMs %> (keyword: <%= keywordMinDowntimeMs %>)"
+      />
+    </label>
+
+    <label>
+      Alert cooldown (ms)
+      <input
+        type="number"
+        name="alertCooldownMs"
+        min="1000"
+        max="3600000"
+        step="1000"
+        value="<%= monitor.alertCooldownMs === null || monitor.alertCooldownMs === undefined ? '' : monitor.alertCooldownMs %>"
+        placeholder="Default: <%= alertCooldownDefaultMs %>"
+      />
+    </label>
+
     <label id="keyword-field">
       Keyword (for keyword checks)
       <input type="text" name="keyword" value="<%= monitor.keyword || '' %>" placeholder="Expected text" />

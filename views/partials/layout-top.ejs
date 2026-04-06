@@ -21,17 +21,40 @@
           </picture>
           <span><%= appName %></span>
         </a>
-        <p class="subtitle">Studio Xentradi Monitoring Console</p>
+        <p class="subtitle">Studio Xentradi Monitoring</p>
 
         <% if (authenticated) { %>
+        <div class="sidebar-divider"></div>
         <nav class="sidebar-nav">
-          <a class="sidebar-link <%= title === 'Dashboard' ? 'active' : '' %>" href="/">Dashboard</a>
-          <a class="sidebar-link <%= title === 'Groups' ? 'active' : '' %>" href="/groups">Groups</a>
-          <a class="sidebar-link <%= title === 'Status Pages' ? 'active' : '' %>" href="/status-pages">Status Pages</a>
+          <a class="sidebar-link <%= title === 'Dashboard' ? 'active' : '' %>" href="/">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+              <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+              <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+              <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+            </svg>
+            Dashboard
+          </a>
+          <a class="sidebar-link <%= title === 'Groups' ? 'active' : '' %>" href="/groups">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+            Groups
+          </a>
+          <a class="sidebar-link <%= title === 'Status Pages' ? 'active' : '' %>" href="/status-pages">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+            Status Pages
+          </a>
         </nav>
-        <form class="sidebar-logout" action="/logout" method="post">
-          <button class="button danger" type="submit">Log Out</button>
-        </form>
+        <div class="sidebar-logout">
+          <form action="/logout" method="post">
+            <button class="button danger" type="submit" style="width:100%">Log Out</button>
+          </form>
+        </div>
         <% } else { %>
         <p class="sidebar-note">Secure monitoring access</p>
         <% } %>

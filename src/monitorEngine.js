@@ -9,6 +9,9 @@ class MonitorEngine {
     downIntervalMs,
     confirmationRetries,
     confirmationRetryIntervalMs,
+    minDowntimeBeforeAlertMs,
+    alertCooldownMs,
+    keywordMinDowntimeMs,
     logger = console
   }) {
     this.store = store;
@@ -16,11 +19,45 @@ class MonitorEngine {
     this.downIntervalMs = downIntervalMs;
     this.confirmationRetries = confirmationRetries;
     this.confirmationRetryIntervalMs = confirmationRetryIntervalMs;
+    this.minDowntimeBeforeAlertMs = minDowntimeBeforeAlertMs;
+    this.alertCooldownMs = alertCooldownMs;
+    this.keywordMinDowntimeMs = keywordMinDowntimeMs;
     this.logger = logger;
 
     this.running = false;
     this.timers = new Map();
     this.retentionTimer = null;
+  }
+
+  resolveCheckedAtMs(result) {
+    if (result && result.checkedAt) {
+      const parsed = new Date(result.checkedAt).getTime();
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+
+    return Date.now();
+  }
+
+  resolveMinDowntimeMs(monitor) {
+    if (Number.isFinite(monitor.minDowntimeMs)) {
+      return Math.max(0, monitor.minDowntimeMs);
+    }
+
+    if (monitor.checkType === 'keyword') {
+      return Math.max(0, this.keywordMinDowntimeMs || 0);
+    }
+
+    return Math.max(0, this.minDowntimeBeforeAlertMs || 0);
+  }
+
+  resolveAlertCooldownMs(monitor) {
+    if (Number.isFinite(monitor.alertCooldownMs)) {
+      return Math.max(0, monitor.alertCooldownMs);
+    }
+
+    return Math.max(0, this.alertCooldownMs || 0);
   }
 
   start() {
@@ -254,6 +291,7 @@ class MonitorEngine {
     this.persistResult(monitor.id, initialResult, 'down');
 
     if (!initialResult.success) {
+      await this.maybeSendDownAlert(monitor, initialResult);
       return this.downIntervalMs;
     }
 
@@ -275,6 +313,78 @@ class MonitorEngine {
     await this.markMonitorRecovered(latestMonitor, upResult);
 
     return this.normalIntervalMs;
+  }
+
+  async maybeSendDownAlert(monitor, result) {
+    const incident = this.store.getOpenIncidentByMonitorId(monitor.id);
+    if (!incident || incident.alertedAt) {
+      return;
+    }
+
+    const nowMs = this.resolveCheckedAtMs(result);
+    const startedMs = new Date(incident.startedAt).getTime();
+    if (!Number.isFinite(startedMs)) {
+      return;
+    }
+
+    const minDowntimeMs = this.resolveMinDowntimeMs(monitor);
+    const downtimeMs = nowMs - startedMs;
+    if (minDowntimeMs > 0 && downtimeMs < minDowntimeMs) {
+      return;
+    }
+
+    const cooldownMs = this.resolveAlertCooldownMs(monitor);
+    const lastAlertDownAt = monitor.runtime ? monitor.runtime.lastAlertDownAt : null;
+    if (lastAlertDownAt && cooldownMs > 0) {
+      const lastAlertMs = new Date(lastAlertDownAt).getTime();
+      if (Number.isFinite(lastAlertMs) && nowMs - lastAlertMs < cooldownMs) {
+        this.store.addEvent({
+          userId: monitor.userId || null,
+          monitorId: monitor.id,
+          monitorName: monitor.name,
+          eventType: 'alert_down_suppressed',
+          message: 'Down alert suppressed (cooldown active)',
+          details: {
+            checkedAt: new Date(nowMs).toISOString(),
+            cooldownRemainingSeconds: Math.ceil((cooldownMs - (nowMs - lastAlertMs)) / 1000)
+          }
+        });
+        return;
+      }
+    }
+
+    const at = new Date(nowMs).toISOString();
+    const currentMonitor = this.store.getMonitorById(monitor.id);
+    if (!currentMonitor) {
+      return;
+    }
+
+    const alertResult = await sendWebhookAlert(currentMonitor, {
+      type: 'down',
+      at,
+      reason: result.reason || 'Confirmed failure after retries'
+    });
+
+    if (alertResult.ok) {
+      this.store.markIncidentAlerted(incident.id, at);
+      this.store.updateMonitorRuntime(monitor.id, {
+        lastAlertDownAt: at
+      });
+    }
+
+    this.store.addEvent({
+      userId: monitor.userId || null,
+      monitorId: monitor.id,
+      monitorName: monitor.name,
+      eventType: alertResult.ok ? 'alert_down_sent' : 'alert_down_failed',
+      message: alertResult.ok
+        ? 'Down alert sent'
+        : `Failed to send down alert: ${alertResult.error || 'unknown error'}`,
+      details: {
+        channel: currentMonitor.webhookType,
+        skipped: Boolean(alertResult.skipped)
+      }
+    });
   }
 
   async markMonitorDown(monitor, result) {
@@ -332,31 +442,6 @@ class MonitorEngine {
         isTlsError: Boolean(result.isTlsError)
       }
     });
-
-    const currentMonitor = this.store.getMonitorById(monitor.id);
-    if (!currentMonitor) {
-      return;
-    }
-
-    const alertResult = await sendWebhookAlert(currentMonitor, {
-      type: 'down',
-      at,
-      reason: result.reason || 'Confirmed failure after retries'
-    });
-
-    this.store.addEvent({
-      userId: monitor.userId || null,
-      monitorId: monitor.id,
-      monitorName: monitor.name,
-      eventType: alertResult.ok ? 'alert_down_sent' : 'alert_down_failed',
-      message: alertResult.ok
-        ? 'Down alert sent'
-        : `Failed to send down alert: ${alertResult.error || 'unknown error'}`,
-      details: {
-        channel: currentMonitor.webhookType,
-        skipped: Boolean(alertResult.skipped)
-      }
-    });
   }
 
   async markMonitorRecovered(monitor, result) {
@@ -403,6 +488,21 @@ class MonitorEngine {
 
     const monitorAfterRecovery = this.store.getMonitorById(monitor.id);
     if (!monitorAfterRecovery) {
+      return;
+    }
+
+    if (!closedIncident || !closedIncident.alertedAt) {
+      this.store.addEvent({
+        userId: monitor.userId || null,
+        monitorId: monitor.id,
+        monitorName: monitor.name,
+        eventType: 'alert_recovery_suppressed',
+        message: 'Recovery alert suppressed (no down alert sent)',
+        details: {
+          checkedAt: at,
+          downAt: closedIncident ? closedIncident.startedAt : null
+        }
+      });
       return;
     }
 

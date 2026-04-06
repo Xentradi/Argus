@@ -72,6 +72,8 @@ class DataStore {
         webhook_type TEXT NOT NULL DEFAULT 'slack',
         webhook_url TEXT NOT NULL DEFAULT '',
         timeout_ms INTEGER NOT NULL DEFAULT 10000,
+        min_downtime_ms INTEGER,
+        alert_cooldown_ms INTEGER,
         active INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -85,6 +87,7 @@ class DataStore {
         last_http_status INTEGER,
         last_keyword_matched INTEGER,
         last_tls_error INTEGER NOT NULL DEFAULT 0,
+        last_alert_down_at TEXT,
         next_check_at TEXT
       );
 
@@ -98,6 +101,7 @@ class DataStore {
         duration_seconds INTEGER,
         down_reason TEXT,
         recovery_reason TEXT,
+        alerted_at TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
@@ -162,8 +166,10 @@ class DataStore {
     this.migrateMonitorsGroupIdColumnIfNeeded();
     this.migrateMonitorsSortOrderColumnIfNeeded();
     this.migrateMonitorsFirstSuccessColumnIfNeeded();
+    this.migrateMonitorsAlertSettingsColumnsIfNeeded();
     this.migrateOwnershipColumnsIfNeeded();
     this.migrateLegacyGroupsIfNeeded();
+    this.migrateIncidentsAlertedAtColumnIfNeeded();
     this.ensureMonitorIndexes();
   }
 
@@ -278,6 +284,25 @@ class DataStore {
       .run();
   }
 
+  migrateMonitorsAlertSettingsColumnsIfNeeded() {
+    const columns = this.db.prepare("PRAGMA table_info('monitors')").all();
+    const hasMinDowntime = columns.some((column) => column.name === 'min_downtime_ms');
+    const hasAlertCooldown = columns.some((column) => column.name === 'alert_cooldown_ms');
+    const hasLastAlertDownAt = columns.some((column) => column.name === 'last_alert_down_at');
+
+    if (!hasMinDowntime) {
+      this.db.prepare('ALTER TABLE monitors ADD COLUMN min_downtime_ms INTEGER').run();
+    }
+
+    if (!hasAlertCooldown) {
+      this.db.prepare('ALTER TABLE monitors ADD COLUMN alert_cooldown_ms INTEGER').run();
+    }
+
+    if (!hasLastAlertDownAt) {
+      this.db.prepare('ALTER TABLE monitors ADD COLUMN last_alert_down_at TEXT').run();
+    }
+  }
+
   migrateOwnershipColumnsIfNeeded() {
     const defaultOwnerRow = this.db
       .prepare('SELECT id FROM users ORDER BY datetime(created_at) ASC LIMIT 1')
@@ -346,6 +371,15 @@ class DataStore {
       )
       .run();
     this.db.prepare('UPDATE events SET user_id = ? WHERE user_id IS NULL').run(defaultOwnerId);
+  }
+
+  migrateIncidentsAlertedAtColumnIfNeeded() {
+    const columns = this.db.prepare("PRAGMA table_info('incidents')").all();
+    const hasAlertedAt = columns.some((column) => column.name === 'alerted_at');
+
+    if (!hasAlertedAt) {
+      this.db.prepare('ALTER TABLE incidents ADD COLUMN alerted_at TEXT').run();
+    }
   }
 
   migrateLegacyGroupsIfNeeded() {
@@ -1068,6 +1102,8 @@ class DataStore {
       webhookType: row.webhook_type,
       webhookUrl: row.webhook_url,
       timeoutMs: row.timeout_ms,
+      minDowntimeMs: row.min_downtime_ms === null || row.min_downtime_ms === undefined ? null : Number(row.min_downtime_ms),
+      alertCooldownMs: row.alert_cooldown_ms === null || row.alert_cooldown_ms === undefined ? null : Number(row.alert_cooldown_ms),
       active: fromIntegerBoolean(row.active),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -1085,6 +1121,7 @@ class DataStore {
             ? null
             : fromIntegerBoolean(row.last_keyword_matched),
         lastTlsError: fromIntegerBoolean(row.last_tls_error),
+        lastAlertDownAt: row.last_alert_down_at,
         nextCheckAt: row.next_check_at
       }
     };
@@ -1176,6 +1213,14 @@ class DataStore {
       webhookType: payload.webhookType || 'slack',
       webhookUrl: payload.webhookUrl || '',
       timeoutMs: Number(payload.timeoutMs) || 10000,
+      minDowntimeMs:
+        payload.minDowntimeMs === null || payload.minDowntimeMs === undefined
+          ? null
+          : Number(payload.minDowntimeMs),
+      alertCooldownMs:
+        payload.alertCooldownMs === null || payload.alertCooldownMs === undefined
+          ? null
+          : Number(payload.alertCooldownMs),
       active: payload.active !== false,
       createdAt: now,
       updatedAt: now,
@@ -1190,6 +1235,7 @@ class DataStore {
         lastHttpStatus: null,
         lastKeywordMatched: null,
         lastTlsError: false,
+        lastAlertDownAt: null,
         nextCheckAt: null
       }
     };
@@ -1200,12 +1246,12 @@ class DataStore {
           INSERT INTO monitors (
             id, user_id, name, group_name, group_id, sort_order, check_type, host, url, keyword,
             keyword_case_sensitive, http_status_mode, tls_error_as_failure,
-            webhook_type, webhook_url, timeout_ms, active,
+            webhook_type, webhook_url, timeout_ms, min_downtime_ms, alert_cooldown_ms, active,
             created_at, updated_at,
             status, last_check_at, first_success_at, last_success_at, last_failure_at,
             last_error, last_response_ms, last_http_status,
-            last_keyword_matched, last_tls_error, next_check_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            last_keyword_matched, last_tls_error, last_alert_down_at, next_check_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `
       )
       .run(
@@ -1225,6 +1271,8 @@ class DataStore {
         monitor.webhookType,
         monitor.webhookUrl,
         monitor.timeoutMs,
+        monitor.minDowntimeMs,
+        monitor.alertCooldownMs,
         toIntegerBoolean(monitor.active),
         monitor.createdAt,
         monitor.updatedAt,
@@ -1238,6 +1286,7 @@ class DataStore {
         monitor.runtime.lastHttpStatus,
         monitor.runtime.lastKeywordMatched === null ? null : toIntegerBoolean(monitor.runtime.lastKeywordMatched),
         toIntegerBoolean(monitor.runtime.lastTlsError),
+        monitor.runtime.lastAlertDownAt,
         monitor.runtime.nextCheckAt
       );
 
@@ -1287,6 +1336,8 @@ class DataStore {
       next.webhookType,
       next.webhookUrl,
       next.timeoutMs,
+      next.minDowntimeMs === undefined ? null : next.minDowntimeMs,
+      next.alertCooldownMs === undefined ? null : next.alertCooldownMs,
       toIntegerBoolean(next.active),
       next.updatedAt,
       next.runtime.status,
@@ -1299,6 +1350,7 @@ class DataStore {
       next.runtime.lastHttpStatus,
       next.runtime.lastKeywordMatched === null ? null : toIntegerBoolean(next.runtime.lastKeywordMatched),
       toIntegerBoolean(next.runtime.lastTlsError),
+      next.runtime.lastAlertDownAt,
       next.runtime.nextCheckAt,
       id
     ];
@@ -1323,6 +1375,8 @@ class DataStore {
               webhook_type = ?,
               webhook_url = ?,
               timeout_ms = ?,
+              min_downtime_ms = ?,
+              alert_cooldown_ms = ?,
               active = ?,
               updated_at = ?,
               status = ?,
@@ -1335,6 +1389,7 @@ class DataStore {
               last_http_status = ?,
               last_keyword_matched = ?,
               last_tls_error = ?,
+              last_alert_down_at = ?,
               next_check_at = ?
             WHERE id = ? AND user_id = ?
           `
@@ -1360,6 +1415,8 @@ class DataStore {
               webhook_type = ?,
               webhook_url = ?,
               timeout_ms = ?,
+              min_downtime_ms = ?,
+              alert_cooldown_ms = ?,
               active = ?,
               updated_at = ?,
               status = ?,
@@ -1372,6 +1429,7 @@ class DataStore {
               last_http_status = ?,
               last_keyword_matched = ?,
               last_tls_error = ?,
+              last_alert_down_at = ?,
               next_check_at = ?
             WHERE id = ?
           `
@@ -1564,6 +1622,7 @@ class DataStore {
       durationSeconds: row.duration_seconds,
       downReason: row.down_reason,
       recoveryReason: row.recovery_reason,
+      alertedAt: row.alerted_at,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     }));
@@ -1600,6 +1659,7 @@ class DataStore {
       durationSeconds: row.duration_seconds,
       downReason: row.down_reason,
       recoveryReason: row.recovery_reason,
+      alertedAt: row.alerted_at,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     }));
@@ -1616,6 +1676,7 @@ class DataStore {
       durationSeconds: null,
       downReason,
       recoveryReason: null,
+      alertedAt: null,
       createdAt: nowIso(),
       updatedAt: nowIso()
     };
@@ -1625,9 +1686,9 @@ class DataStore {
         `
           INSERT INTO incidents (
             id, user_id, monitor_id, monitor_name, started_at, ended_at,
-            duration_seconds, down_reason, recovery_reason,
+            duration_seconds, down_reason, recovery_reason, alerted_at,
             created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `
       )
       .run(
@@ -1640,6 +1701,7 @@ class DataStore {
         incident.durationSeconds,
         incident.downReason,
         incident.recoveryReason,
+        incident.alertedAt,
         incident.createdAt,
         incident.updatedAt
       );
@@ -1673,6 +1735,7 @@ class DataStore {
       durationSeconds: row.duration_seconds,
       downReason: row.down_reason,
       recoveryReason: row.recovery_reason,
+      alertedAt: row.alerted_at,
       createdAt: row.created_at,
       updatedAt: row.updated_at
     };
@@ -1695,6 +1758,7 @@ class DataStore {
         durationSeconds: incident.duration_seconds,
         downReason: incident.down_reason,
         recoveryReason: incident.recovery_reason,
+        alertedAt: incident.alerted_at,
         createdAt: incident.created_at,
         updatedAt: incident.updated_at
       };
@@ -1729,6 +1793,40 @@ class DataStore {
       durationSeconds,
       downReason: incident.down_reason,
       recoveryReason,
+      alertedAt: incident.alerted_at,
+      createdAt: incident.created_at,
+      updatedAt
+    };
+  }
+
+  markIncidentAlerted(incidentId, alertedAt) {
+    const incident = this.db.prepare('SELECT * FROM incidents WHERE id = ?').get(incidentId);
+    if (!incident) {
+      return null;
+    }
+
+    const updatedAt = nowIso();
+    this.db
+      .prepare(
+        `
+          UPDATE incidents
+          SET alerted_at = ?, updated_at = ?
+          WHERE id = ?
+        `
+      )
+      .run(alertedAt, updatedAt, incidentId);
+
+    return {
+      id: incident.id,
+      userId: incident.user_id || null,
+      monitorId: incident.monitor_id,
+      monitorName: incident.monitor_name,
+      startedAt: incident.started_at,
+      endedAt: incident.ended_at,
+      durationSeconds: incident.duration_seconds,
+      downReason: incident.down_reason,
+      recoveryReason: incident.recovery_reason,
+      alertedAt,
       createdAt: incident.created_at,
       updatedAt
     };

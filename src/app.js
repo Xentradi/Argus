@@ -22,6 +22,9 @@ const engine = new MonitorEngine({
   downIntervalMs: config.downIntervalMs,
   confirmationRetries: config.confirmationRetries,
   confirmationRetryIntervalMs: config.confirmationRetryIntervalMs,
+  minDowntimeBeforeAlertMs: config.minDowntimeBeforeAlertMs,
+  alertCooldownMs: config.alertCooldownMs,
+  keywordMinDowntimeMs: config.keywordMinDowntimeMs,
   logger: console
 });
 
@@ -378,8 +381,10 @@ function buildDashboardSnapshot({ userId = null, eventsPage = 1, includeEvents =
       'monitor_recovered',
       'alert_down_sent',
       'alert_down_failed',
+      'alert_down_suppressed',
       'alert_recovery_sent',
       'alert_recovery_failed',
+      'alert_recovery_suppressed',
       'manual_alert_sent',
       'manual_alert_failed'
     ]);
@@ -404,6 +409,19 @@ async function sendManualStatusAlert(monitor, trigger) {
     reason: monitor.runtime?.lastError || null,
     trigger
   });
+}
+
+function parseOptionalMs(value, min, max) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const trimmed = String(value).trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return clampNumber(trimmed, min, max, null);
 }
 
 function parseMonitorForm(body, existing = null, userId = null) {
@@ -472,6 +490,8 @@ function parseMonitorForm(body, existing = null, userId = null) {
     config.maxTimeoutMs,
     existing ? existing.timeoutMs : config.defaultTimeoutMs
   );
+  const minDowntimeMs = parseOptionalMs(body.minDowntimeMs, 1_000, 3_600_000);
+  const alertCooldownMs = parseOptionalMs(body.alertCooldownMs, 1_000, 3_600_000);
 
   const monitorPayload = {
     name,
@@ -487,6 +507,8 @@ function parseMonitorForm(body, existing = null, userId = null) {
     webhookType,
     webhookUrl,
     timeoutMs,
+    minDowntimeMs,
+    alertCooldownMs,
     active: body.active === 'on'
   };
 
@@ -587,6 +609,10 @@ function monitorToFormBody(monitor) {
     webhookType: monitor.webhookType || 'slack',
     webhookUrl: monitor.webhookUrl || '',
     timeoutMs: monitor.timeoutMs,
+    minDowntimeMs:
+      monitor.minDowntimeMs === null || monitor.minDowntimeMs === undefined ? '' : monitor.minDowntimeMs,
+    alertCooldownMs:
+      monitor.alertCooldownMs === null || monitor.alertCooldownMs === undefined ? '' : monitor.alertCooldownMs,
     active: monitor.active ? 'on' : ''
   };
 }
@@ -631,6 +657,12 @@ function normalizeApiMonitorBody(body, existing = null) {
   if (input.timeoutMs !== undefined) {
     normalized.timeoutMs = input.timeoutMs;
   }
+  if (input.minDowntimeMs !== undefined) {
+    normalized.minDowntimeMs = input.minDowntimeMs;
+  }
+  if (input.alertCooldownMs !== undefined) {
+    normalized.alertCooldownMs = input.alertCooldownMs;
+  }
   if (input.active !== undefined) {
     normalized.active = input.active ? 'on' : '';
   }
@@ -673,6 +705,8 @@ function serializeMonitorForApi(monitor) {
     webhookType: monitor.webhookType,
     webhookUrl: monitor.webhookUrl,
     timeoutMs: monitor.timeoutMs,
+    minDowntimeMs: monitor.minDowntimeMs,
+    alertCooldownMs: monitor.alertCooldownMs,
     active: monitor.active,
     statusClass,
     displayStatus,
@@ -1044,6 +1078,9 @@ app.get('/monitors/new', requireAuth, (req, res) => {
   res.render('monitor-form', {
     editing: false,
     groups,
+    minDowntimeDefaultMs: config.minDowntimeBeforeAlertMs,
+    alertCooldownDefaultMs: config.alertCooldownMs,
+    keywordMinDowntimeMs: config.keywordMinDowntimeMs,
     monitor: {
       name: '',
       groupId: '',
@@ -1058,6 +1095,8 @@ app.get('/monitors/new', requireAuth, (req, res) => {
       webhookType: 'slack',
       webhookUrl: '',
       timeoutMs: config.defaultTimeoutMs,
+      minDowntimeMs: null,
+      alertCooldownMs: null,
       active: true
     }
   });
@@ -1107,6 +1146,9 @@ app.get('/monitors/:id/edit', requireAuth, (req, res) => {
   res.render('monitor-form', {
     editing: true,
     groups,
+    minDowntimeDefaultMs: config.minDowntimeBeforeAlertMs,
+    alertCooldownDefaultMs: config.alertCooldownMs,
+    keywordMinDowntimeMs: config.keywordMinDowntimeMs,
     monitor
   });
 });
