@@ -42,6 +42,19 @@ const port = config.apps?.[0]?.env?.PORT;
 process.stdout.write(String(port || 3001));
 NODE
 )"
-curl -fsS "http://127.0.0.1:${health_port}/healthz" >/dev/null
+
+for attempt in $(seq 1 15); do
+  if curl -fsS "http://127.0.0.1:${health_port}/healthz" >/dev/null; then
+    echo "Health check passed on attempt ${attempt}."
+    break
+  fi
+
+  if [[ "$attempt" -eq 15 ]]; then
+    echo "Health check failed after 15 attempts on port ${health_port}." >&2
+    exit 1
+  fi
+
+  sleep 2
+done
 
 echo "Argus deploy completed on $(hostname -s) as ${current_user}."
