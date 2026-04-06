@@ -144,6 +144,14 @@ pm2 save
 pm2 startup
 ```
 
+## Orion Deploy
+
+On Orion, the live checkout and PM2 process run as `xen` from `/home/xen/apps/Argus`.
+
+```bash
+ssh root@orion.corp.xentradi.com 'su - xen -c "cd /home/xen/apps/Argus && git pull --ff-only && pm2 startOrReload ecosystem.config.js && curl -fsS http://127.0.0.1:3000/healthz"'
+```
+
 ## After Node Major Upgrades
 
 Argus uses native SQLite addons (`better-sqlite3` + `sqlite3` via `connect-sqlite3`). After a Node major upgrade on a host, reinstall/rebuild before reloading PM2:
