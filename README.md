@@ -51,7 +51,7 @@ npm install
 npm start
 ```
 
-Then open the app in your browser.
+Then open `http://localhost:3000`.
 
 On first launch, you will be redirected to `/setup` to create the admin user and enroll TOTP.
 
@@ -84,13 +84,13 @@ Swagger/OpenAPI docs:
 
 ## Smoke Checks
 
-Runs one-off checks from a JSON file you keep outside the repository:
+Runs one-off checks from a local JSON file (not committed):
 
 ```bash
-npm run smoke path/to/smoke-targets.json
+npm run smoke ./local/smoke-targets.json
 ```
 
-Example `smoke-targets.json`:
+Example `./local/smoke-targets.json`:
 
 ```json
 [
@@ -111,13 +111,13 @@ Example `smoke-targets.json`:
 
 ## Seed Monitors
 
-Creates or updates monitors from a JSON file you keep outside the repository:
+Creates/updates monitors from a local JSON file (not committed):
 
 ```bash
-npm run seed path/to/seed-monitors.json
+npm run seed ./local/seed-monitors.json
 ```
 
-Example `seed-monitors.json`:
+Example `./local/seed-monitors.json`:
 
 ```json
 [
@@ -141,10 +141,6 @@ pm2 start ecosystem.config.js
 pm2 save
 pm2 startup
 ```
-
-## Deployment
-
-Use the guarded deploy helper for the target environment. Keep environment-specific deploy commands and host details out of the repository documentation.
 
 ## After Node Major Upgrades
 
