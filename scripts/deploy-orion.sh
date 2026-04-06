@@ -35,6 +35,13 @@ fi
 
 git pull --ff-only origin master
 pm2 startOrReload ecosystem.config.js --update-env
-curl -fsS http://127.0.0.1:3000/healthz >/dev/null
+health_port="$(
+  node - <<'NODE'
+const config = require('./ecosystem.config.js');
+const port = config.apps?.[0]?.env?.PORT;
+process.stdout.write(String(port || 3001));
+NODE
+)"
+curl -fsS "http://127.0.0.1:${health_port}/healthz" >/dev/null
 
 echo "Argus deploy completed on $(hostname -s) as ${current_user}."

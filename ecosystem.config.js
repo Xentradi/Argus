@@ -8,7 +8,7 @@ module.exports = {
       watch: false,
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        PORT: 3001,
         DB_FILE: './data/argus.db',
         RETENTION_DAYS: 1095,
         NORMAL_INTERVAL_MS: 60000,
@@ -17,7 +17,7 @@ module.exports = {
         CONFIRMATION_RETRY_INTERVAL_MS: 5000,
         DEFAULT_TIMEOUT_MS: 10000,
         WEBHOOK_DISPLAY_NAME: 'Argus',
-        WEBHOOK_PUBLIC_BASE_URL: 'https://monitor.example.com',
+        WEBHOOK_PUBLIC_BASE_URL: 'https://argus.xentradi.com',
         WEBHOOK_ICON_PATH: '/img/argus.jpg'
       }
     }
