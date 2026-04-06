@@ -51,7 +51,7 @@ npm install
 npm start
 ```
 
-Then open `http://localhost:3000`.
+Then open the app in your browser.
 
 On first launch, you will be redirected to `/setup` to create the admin user and enroll TOTP.
 
@@ -84,13 +84,13 @@ Swagger/OpenAPI docs:
 
 ## Smoke Checks
 
-Runs one-off checks from a local JSON file (not committed):
+Runs one-off checks from a JSON file you keep outside the repository:
 
 ```bash
-npm run smoke ./local/smoke-targets.json
+npm run smoke path/to/smoke-targets.json
 ```
 
-Example `./local/smoke-targets.json`:
+Example `smoke-targets.json`:
 
 ```json
 [
@@ -111,15 +111,13 @@ Example `./local/smoke-targets.json`:
 
 ## Seed Monitors
 
-Creates/updates monitors from a local JSON file (not committed):
+Creates or updates monitors from a JSON file you keep outside the repository:
 
 ```bash
-npm run seed ./local/seed-monitors.json
+npm run seed path/to/seed-monitors.json
 ```
 
-Use local files so host and webhook data stay out of git history.
-
-Example `./local/seed-monitors.json`:
+Example `seed-monitors.json`:
 
 ```json
 [
@@ -144,23 +142,9 @@ pm2 save
 pm2 startup
 ```
 
-## Orion Deploy
+## Deployment
 
-On Orion, the live checkout and PM2 process run as `xen` from `/home/xen/apps/Argus`.
-
-Use the guarded deploy helper instead of logging in as `root`:
-
-```bash
-npm run deploy:orion
-```
-
-If you need to run it manually on `orion`, use `xen` directly:
-
-```bash
-ssh xen@orion.corp.xentradi.com 'cd /home/xen/apps/Argus && ./scripts/deploy-orion.sh'
-```
-
-The helper refuses to run as `root`, checks for a clean `master` checkout, and only then pulls, reloads PM2, and health-checks the local port.
+Use the guarded deploy helper for the target environment. Keep environment-specific deploy commands and host details out of the repository documentation.
 
 ## After Node Major Upgrades
 
@@ -187,7 +171,7 @@ Or run the bundled helper on the server:
 - `CONFIRMATION_RETRY_INTERVAL_MS` (default: `5000`)
 - `DEFAULT_TIMEOUT_MS` (default: `10000`)
 - `WEBHOOK_DISPLAY_NAME` (default: `Argus`)
-- `WEBHOOK_PUBLIC_BASE_URL` (default: `http://127.0.0.1:<PORT>`)
+- `WEBHOOK_PUBLIC_BASE_URL` (set per deployment)
 - `WEBHOOK_ICON_PATH` (default: `/img/argus-logo.png`)
 - `WEBHOOK_ICON_URL` (default: empty)
 - `ALERT_TIMEZONE` (default: `Pacific/Honolulu`, i.e. GMT-10)

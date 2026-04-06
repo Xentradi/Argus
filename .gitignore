@@ -13,3 +13,4 @@ img/
 *.db-wal
 agents.md
 .claude/
+memory/
