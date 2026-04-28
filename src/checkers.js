@@ -1,6 +1,7 @@
 const { execFile } = require('child_process');
 const https = require('https');
 const axios = require('axios');
+const config = require('./config');
 
 function nowIso() {
   return new Date().toISOString();
@@ -21,16 +22,18 @@ function extractPingTimeMs(text) {
 }
 
 function buildPingArgs(host, timeoutMs) {
+  const probeCount = Math.max(1, Number.isFinite(config.pingProbeCount) ? config.pingProbeCount : 3);
+
   if (process.platform === 'win32') {
-    return ['-n', '1', '-w', String(timeoutMs), host];
+    return ['-n', String(probeCount), '-w', String(timeoutMs), host];
   }
 
   if (process.platform === 'darwin') {
-    return ['-c', '1', '-W', String(timeoutMs), host];
+    return ['-c', String(probeCount), '-W', String(timeoutMs), host];
   }
 
   const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
-  return ['-c', '1', '-W', String(timeoutSeconds), host];
+  return ['-c', String(probeCount), '-W', String(timeoutSeconds), host];
 }
 
 function summarizePingFailure(output) {
@@ -72,19 +75,43 @@ function summarizePingFailure(output) {
   return null;
 }
 
+function parsePingPacketSummary(output) {
+  const text = String(output || '').trim();
+  if (!text) {
+    return null;
+  }
+
+  const packetsMatch = text.match(/(\d+)\s+packets transmitted,\s*(\d+)\s+(?:packets\s+)?received/i);
+  if (!packetsMatch) {
+    return null;
+  }
+
+  const sent = Number.parseInt(packetsMatch[1], 10);
+  const received = Number.parseInt(packetsMatch[2], 10);
+  if (!Number.isFinite(sent) || !Number.isFinite(received)) {
+    return null;
+  }
+
+  return { sent, received };
+}
+
 function runPingCheck(host, timeoutMs) {
   return new Promise((resolve) => {
     const startedAt = Date.now();
+    const probeCount = Math.max(1, Number.isFinite(config.pingProbeCount) ? config.pingProbeCount : 3);
+    const execTimeoutMs = timeoutMs * probeCount + 1000;
 
-    execFile('ping', buildPingArgs(host, timeoutMs), { timeout: timeoutMs + 1000 }, (error, stdout, stderr) => {
+    execFile('ping', buildPingArgs(host, timeoutMs), { timeout: execTimeoutMs }, (error, stdout, stderr) => {
       const responseMs = Date.now() - startedAt;
       const checkedAt = nowIso();
+      const output = [stdout, stderr].filter(Boolean).join('\n').trim();
+      const packetSummary = parsePingPacketSummary(output);
 
-      if (!error) {
+      if (!error || (packetSummary && packetSummary.received > 0)) {
         resolve({
           success: true,
           checkedAt,
-          responseMs: extractPingTimeMs(stdout) || responseMs,
+          responseMs: extractPingTimeMs(output) || responseMs,
           statusCode: null,
           keywordMatched: null,
           isTlsError: false,
@@ -93,7 +120,6 @@ function runPingCheck(host, timeoutMs) {
         return;
       }
 
-      const output = [stdout, stderr].filter(Boolean).join('\n').trim();
       let reason = summarizePingFailure(output) || output || error.message || 'Ping failed';
 
       if (error.code === 'ENOENT') {

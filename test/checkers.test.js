@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const { once } = require('node:events');
 const { before, after, test } = require('node:test');
+const childProcess = require('node:child_process');
 
 const { runCheck } = require('../src/checkers');
 
@@ -57,6 +58,19 @@ after(async () => {
   server.close();
   await once(server, 'close');
 });
+
+function loadPingCheckWithStub(execFileImpl) {
+  const originalExecFile = childProcess.execFile;
+  childProcess.execFile = execFileImpl;
+
+  delete require.cache[require.resolve('../src/checkers')];
+  require('../src/checkers');
+
+  return () => {
+    childProcess.execFile = originalExecFile;
+    delete require.cache[require.resolve('../src/checkers')];
+  };
+}
 
 test('HTTP mode 2xx accepts 204 responses', async () => {
   const result = await runCheck(
@@ -114,4 +128,70 @@ test('keyword check can enforce case-sensitive matching', async () => {
   assert.equal(result.success, false);
   assert.equal(result.keywordMatched, false);
   assert.match(result.reason, /not found/i);
+});
+
+test('ping check succeeds when at least one probe replies', async () => {
+  const restore = loadPingCheckWithStub((command, args, options, callback) => {
+    assert.equal(command, 'ping');
+    if (process.platform === 'win32') {
+      assert.deepEqual(args.slice(0, 2), ['-n', '3']);
+    } else {
+      assert.deepEqual(args.slice(0, 2), ['-c', '3']);
+    }
+
+    callback(
+      Object.assign(new Error('ping exited with code 1'), { code: 1, killed: false }),
+      '3 packets transmitted, 2 received, 33% packet loss\n',
+      ''
+    );
+  });
+
+  try {
+    const { runCheck: runCheckWithStub } = require('../src/checkers');
+    const result = await runCheckWithStub(
+      monitor({
+        checkType: 'ping',
+        host: '203.0.113.10',
+        timeoutMs: 1000
+      })
+    );
+
+    assert.equal(result.success, true);
+    assert.equal(result.reason, null);
+  } finally {
+    restore();
+  }
+});
+
+test('ping check reports 100% loss only when all probes fail', async () => {
+  const restore = loadPingCheckWithStub((command, args, options, callback) => {
+    assert.equal(command, 'ping');
+    if (process.platform === 'win32') {
+      assert.deepEqual(args.slice(0, 2), ['-n', '3']);
+    } else {
+      assert.deepEqual(args.slice(0, 2), ['-c', '3']);
+    }
+
+    callback(
+      Object.assign(new Error('ping exited with code 1'), { code: 1, killed: false }),
+      '3 packets transmitted, 0 received, 100% packet loss\n',
+      ''
+    );
+  });
+
+  try {
+    const { runCheck: runCheckWithStub } = require('../src/checkers');
+    const result = await runCheckWithStub(
+      monitor({
+        checkType: 'ping',
+        host: '203.0.113.10',
+        timeoutMs: 1000
+      })
+    );
+
+    assert.equal(result.success, false);
+    assert.match(result.reason, /0\/3 replies/);
+  } finally {
+    restore();
+  }
 });

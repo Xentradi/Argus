@@ -16,6 +16,7 @@ Argus is a self-hosted uptime monitoring service with:
 ## Check Logic
 
 - **Normal state**: check every 60 seconds.
+- **Ping checks**: each ping probe sends 3 ICMP echo requests by default; any reply keeps the monitor up.
 - **Failure candidate**: if a check fails, run 3 additional checks spaced 5 seconds apart.
   - If all retries fail, mark monitor `down`, open incident, send down alert, switch to 15-second interval.
   - If any retry succeeds, stay `up` and return to 60-second interval.
@@ -165,6 +166,7 @@ Or run the bundled helper on the server:
 - `DOWN_INTERVAL_MS` (default: `15000`)
 - `CONFIRMATION_RETRIES` (default: `3`)
 - `CONFIRMATION_RETRY_INTERVAL_MS` (default: `5000`)
+- `PING_PROBE_COUNT` (default: `3`)
 - `DEFAULT_TIMEOUT_MS` (default: `10000`)
 - `WEBHOOK_DISPLAY_NAME` (default: `Argus`)
 - `WEBHOOK_PUBLIC_BASE_URL` (set per deployment)

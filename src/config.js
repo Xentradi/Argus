@@ -60,6 +60,7 @@ module.exports = {
   downIntervalMs: parseIntEnv('DOWN_INTERVAL_MS', 15_000, 1_000, 3_600_000),
   confirmationRetries: parseIntEnv('CONFIRMATION_RETRIES', 3, 1, 10),
   confirmationRetryIntervalMs: parseIntEnv('CONFIRMATION_RETRY_INTERVAL_MS', 5_000, 1_000, 60_000),
+  pingProbeCount: parseIntEnv('PING_PROBE_COUNT', 3, 1, 10),
   minDowntimeBeforeAlertMs: parseIntEnv('MIN_DOWNTIME_BEFORE_ALERT_MS', 120_000, 1_000, 3_600_000),
   alertCooldownMs: parseIntEnv('ALERT_COOLDOWN_MS', 600_000, 1_000, 3_600_000),
   keywordMinDowntimeMs: parseIntEnv('KEYWORD_MIN_DOWNTIME_MS', 180_000, 1_000, 3_600_000),
