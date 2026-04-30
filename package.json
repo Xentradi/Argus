@@ -4,6 +4,7 @@
   "description": "Argus self-hosted uptime monitor with Slack/Discord alerts and MFA-protected UI",
   "main": "src/app.js",
   "private": true,
+  "packageManager": "pnpm@10.6.0",
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
