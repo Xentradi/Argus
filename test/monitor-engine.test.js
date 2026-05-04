@@ -12,10 +12,12 @@ let store;
 
 const checkersPath = require.resolve('../src/checkers');
 const alertsPath = require.resolve('../src/alerts');
+const lifecyclePath = require.resolve('../src/domain/monitorLifecycle');
 const enginePath = require.resolve('../src/monitorEngine');
 
 let originalCheckers;
 let originalAlerts;
+let originalLifecycle;
 let originalEngine;
 
 function buildResult({ success, checkedAt, reason = null }) {
@@ -41,6 +43,7 @@ function buildEngine({ runCheckSequence, sendWebhookAlertImpl, configOverrides =
 
   require.cache[checkersPath] = { exports: { runCheck } };
   require.cache[alertsPath] = { exports: { sendWebhookAlert: sendWebhookAlertImpl } };
+  delete require.cache[lifecyclePath];
   delete require.cache[enginePath];
 
   const { MonitorEngine } = require('../src/monitorEngine');
@@ -64,6 +67,7 @@ beforeEach(() => {
   store = new DataStore(dbPath, 30);
   originalCheckers = require.cache[checkersPath];
   originalAlerts = require.cache[alertsPath];
+  originalLifecycle = require.cache[lifecyclePath];
   originalEngine = require.cache[enginePath];
 });
 
@@ -79,6 +83,11 @@ afterEach(() => {
     require.cache[alertsPath] = originalAlerts;
   } else {
     delete require.cache[alertsPath];
+  }
+  if (originalLifecycle) {
+    require.cache[lifecyclePath] = originalLifecycle;
+  } else {
+    delete require.cache[lifecyclePath];
   }
   if (originalEngine) {
     require.cache[enginePath] = originalEngine;
