@@ -9,6 +9,7 @@ const QRCode = require('qrcode');
 
 const config = require('./config');
 const { DataStore } = require('./store');
+const { createRepositories } = require('./repositories');
 const { MonitorEngine } = require('./monitorEngine');
 const { sendWebhookAlert } = require('./alerts');
 const { clampNumber, isLikelyUrl, normalizeUrl, safeLower } = require('./utils');
@@ -18,7 +19,8 @@ const { registerGroupRoutes } = require('./routes/groups');
 const { registerStatusPageRoutes } = require('./routes/statusPages');
 
 const app = express();
-const store = new DataStore(config.dbFile, config.retentionDays);
+const baseStore = new DataStore(config.dbFile, config.retentionDays);
+const store = createRepositories(baseStore);
 
 const engine = new MonitorEngine({
   store,
@@ -1119,7 +1121,7 @@ function gracefulShutdown(signal) {
   engine.stop();
 
   server.close(() => {
-    store.close();
+    baseStore.close();
     process.exit(0);
   });
 }
