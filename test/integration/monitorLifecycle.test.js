@@ -5,10 +5,12 @@ const path = require('node:path');
 const { afterEach, beforeEach, test } = require('node:test');
 
 const { DataStore } = require('../../src/store');
+const { createRepositories } = require('../../src/repositories');
 const { MonitorLifecycle } = require('../../src/domain/monitorLifecycle');
 
 let tempDir;
 let store;
+let repositories;
 
 function buildResult({ success, checkedAt, reason = null }) {
   return {
@@ -32,7 +34,9 @@ function buildLifecycle({ runCheckSequence, sendWebhookAlertImpl = async () => (
   };
 
   return new MonitorLifecycle({
-    store,
+    monitorRepository: repositories.monitors,
+    incidentRepository: repositories.incidents,
+    eventRepository: repositories.events,
     normalIntervalMs: 1000,
     downIntervalMs: 500,
     confirmationRetries: 1,
@@ -50,6 +54,7 @@ function buildLifecycle({ runCheckSequence, sendWebhookAlertImpl = async () => (
 beforeEach(() => {
   tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'argus-integration-lifecycle-'));
   store = new DataStore(path.join(tempDir, 'store.db'), 30);
+  repositories = createRepositories(store);
 });
 
 afterEach(() => {

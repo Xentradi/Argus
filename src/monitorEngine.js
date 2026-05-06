@@ -18,7 +18,9 @@ class MonitorEngine {
     this.downIntervalMs = downIntervalMs;
     this.logger = normalizeLogger(logger);
     this.lifecycle = new MonitorLifecycle({
-      store,
+      monitorRepository: store.monitors || store,
+      incidentRepository: store.incidents || store,
+      eventRepository: store.events || store,
       normalIntervalMs,
       downIntervalMs,
       confirmationRetries,
