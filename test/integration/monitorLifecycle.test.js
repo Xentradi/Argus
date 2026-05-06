@@ -1,0 +1,101 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { afterEach, beforeEach, test } = require('node:test');
+
+const { DataStore } = require('../../src/store');
+const { MonitorLifecycle } = require('../../src/domain/monitorLifecycle');
+
+let tempDir;
+let store;
+
+function buildResult({ success, checkedAt, reason = null }) {
+  return {
+    success,
+    checkedAt,
+    responseMs: success ? 20 : 33,
+    statusCode: success ? 200 : 503,
+    keywordMatched: success ? true : false,
+    isTlsError: false,
+    reason: success ? null : reason || 'Failure'
+  };
+}
+
+function buildLifecycle({ runCheckSequence, sendWebhookAlertImpl = async () => ({ ok: true, skipped: false }) }) {
+  const sequence = [...runCheckSequence];
+  const runCheckImpl = async () => {
+    if (sequence.length === 0) {
+      throw new Error('No more runCheck results in sequence');
+    }
+    return sequence.shift();
+  };
+
+  return new MonitorLifecycle({
+    store,
+    normalIntervalMs: 1000,
+    downIntervalMs: 500,
+    confirmationRetries: 1,
+    confirmationRetryIntervalMs: 0,
+    minDowntimeBeforeAlertMs: 1000,
+    alertCooldownMs: 5000,
+    keywordMinDowntimeMs: 3000,
+    runCheckImpl,
+    sendWebhookAlertImpl,
+    sleepImpl: async () => {},
+    logger: { error: () => {}, info: () => {}, warn: () => {} }
+  });
+}
+
+beforeEach(() => {
+  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'argus-integration-lifecycle-'));
+  store = new DataStore(path.join(tempDir, 'store.db'), 30);
+});
+
+afterEach(() => {
+  store.close();
+  fs.rmSync(tempDir, { recursive: true, force: true });
+});
+
+test('lifecycle transitions update incidents and event history end to end', async () => {
+  const sendCalls = [];
+  const lifecycle = buildLifecycle({
+    runCheckSequence: [
+      buildResult({ success: false, checkedAt: '2024-01-01T00:00:00.000Z' }),
+      buildResult({ success: false, checkedAt: '2024-01-01T00:00:02.000Z' }),
+      buildResult({ success: false, checkedAt: '2024-01-01T00:00:04.000Z' }),
+      buildResult({ success: true, checkedAt: '2024-01-01T00:00:06.000Z' }),
+      buildResult({ success: true, checkedAt: '2024-01-01T00:00:08.000Z' })
+    ],
+    sendWebhookAlertImpl: async (...args) => {
+      sendCalls.push(args);
+      return { ok: true, skipped: false };
+    }
+  });
+
+  const monitor = store.createMonitor({
+    name: 'Integration Monitor',
+    checkType: 'http',
+    url: 'https://example.com/health',
+    webhookType: 'slack',
+    webhookUrl: 'https://example.invalid/webhook'
+  });
+
+  const firstDelay = await lifecycle.handleUpMonitor(store.getMonitorById(monitor.id));
+  const secondDelay = await lifecycle.handleDownMonitor(store.getMonitorById(monitor.id));
+  const recoveryDelay = await lifecycle.handleDownMonitor(store.getMonitorById(monitor.id));
+
+  assert.equal(firstDelay, 500);
+  assert.equal(secondDelay, 500);
+  assert.equal(recoveryDelay, 1000);
+  assert.equal(sendCalls.length, 2);
+
+  const incidents = store.listIncidents(5);
+  const events = store.listEvents(20);
+
+  assert.equal(incidents.length, 1);
+  assert.ok(incidents[0].endedAt);
+  assert.ok(events.some((event) => event.eventType === 'monitor_down'));
+  assert.ok(events.some((event) => event.eventType === 'monitor_recovered'));
+  assert.equal(store.getMonitorById(monitor.id).runtime.status, 'up');
+});

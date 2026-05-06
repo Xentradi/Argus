@@ -561,6 +561,7 @@ app.use((req, res, next) => {
 });
 
 const apiRouter = express.Router();
+apiRouter.use(requireApiKey);
 
 registerAuthRoutes(app, {
   store,
@@ -611,7 +612,6 @@ registerStatusPageRoutes(app, apiRouter, {
   apiError
 });
 
-apiRouter.use(requireApiKey);
 app.use('/api/v1', apiRouter);
 
 app.get('/healthz', (_req, res) => {
