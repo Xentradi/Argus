@@ -6,6 +6,7 @@ const {
   buildRuntimePatch,
   buildRecoveryRuntimePatch
 } = require('./monitorSnapshot');
+const { normalizeLogger } = require('../observability/logger');
 
 class MonitorLifecycle {
   constructor({
@@ -33,7 +34,7 @@ class MonitorLifecycle {
     this.runCheck = runCheckImpl;
     this.sendWebhookAlert = sendWebhookAlertImpl;
     this.sleep = sleepImpl;
-    this.logger = logger;
+    this.logger = normalizeLogger(logger);
   }
 
   resolveCheckedAtMs(result) {
@@ -69,6 +70,14 @@ class MonitorLifecycle {
 
   persistResult(monitorId, result, status) {
     const existingMonitor = this.store.getMonitorById(monitorId);
+    if (!existingMonitor) {
+      this.logger.warn('Skipping monitor result persistence for missing monitor', {
+        monitorId,
+        status
+      });
+      return;
+    }
+
     const runtimePatch = buildRuntimePatch({
       monitor: existingMonitor,
       result,
@@ -216,6 +225,9 @@ class MonitorLifecycle {
     const at = new Date(nowMs).toISOString();
     const currentMonitor = this.store.getMonitorById(monitor.id);
     if (!currentMonitor) {
+      this.logger.warn('Skipping down alert for missing monitor', {
+        monitorId: monitor.id
+      });
       return;
     }
 
@@ -231,6 +243,12 @@ class MonitorLifecycle {
         lastAlertDownAt: at
       });
     }
+
+    this.logger.info('alert_down_result', {
+      monitorId: monitor.id,
+      alerted: Boolean(alertResult.ok),
+      skipped: Boolean(alertResult.skipped)
+    });
 
     this.store.addEvent({
       userId: monitor.userId || null,
@@ -268,6 +286,10 @@ class MonitorLifecycle {
 
     const openIncident = this.store.getOpenIncidentByMonitorId(monitor.id);
     if (openIncident) {
+      this.logger.info('monitor_down_suppressed', {
+        monitorId: monitor.id,
+        reason: 'incident_already_open'
+      });
       this.store.addEvent({
         userId: monitor.userId || null,
         monitorId: monitor.id,
@@ -289,6 +311,12 @@ class MonitorLifecycle {
       downReason: result.reason || 'Confirmed failure after retries'
     });
 
+    this.logger.info('monitor_down', {
+      monitorId: monitor.id,
+      reason: result.reason || 'Confirmed failure after retries',
+      responseMs: result.responseMs
+    });
+
     this.store.addEvent({
       userId: monitor.userId || null,
       monitorId: monitor.id,
@@ -307,8 +335,15 @@ class MonitorLifecycle {
   async markMonitorRecovered(monitor, result) {
     const at = result.checkedAt || new Date().toISOString();
     const currentMonitor = this.store.getMonitorById(monitor.id);
+    if (!currentMonitor) {
+      this.logger.warn('Skipping recovery transition for missing monitor', {
+        monitorId: monitor.id
+      });
+      return;
+    }
+
     const recoveryPatch = buildRecoveryRuntimePatch({
-      monitor: currentMonitor || monitor,
+      monitor: currentMonitor,
       result: {
         ...result,
         checkedAt: at
@@ -334,12 +369,21 @@ class MonitorLifecycle {
       }
     });
 
+    this.logger.info('monitor_recovered', {
+      monitorId: monitor.id,
+      alerted: Boolean(closedIncident && closedIncident.alertedAt)
+    });
+
     const monitorAfterRecovery = this.store.getMonitorById(monitor.id);
     if (!monitorAfterRecovery) {
       return;
     }
 
     if (!closedIncident || !closedIncident.alertedAt) {
+      this.logger.info('alert_recovery_suppressed', {
+        monitorId: monitor.id,
+        reason: 'no_down_alert'
+      });
       this.store.addEvent({
         userId: monitor.userId || null,
         monitorId: monitor.id,
@@ -374,6 +418,12 @@ class MonitorLifecycle {
         channel: monitorAfterRecovery.webhookType,
         skipped: Boolean(alertResult.skipped)
       }
+    });
+
+    this.logger.info('alert_recovery_result', {
+      monitorId: monitor.id,
+      alerted: Boolean(alertResult.ok),
+      skipped: Boolean(alertResult.skipped)
     });
   }
 }

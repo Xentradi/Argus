@@ -1,4 +1,5 @@
 const { MonitorLifecycle } = require('./domain/monitorLifecycle');
+const { normalizeLogger } = require('./observability/logger');
 
 class MonitorEngine {
   constructor({
@@ -15,7 +16,7 @@ class MonitorEngine {
     this.store = store;
     this.normalIntervalMs = normalIntervalMs;
     this.downIntervalMs = downIntervalMs;
-    this.logger = logger;
+    this.logger = normalizeLogger(logger);
     this.lifecycle = new MonitorLifecycle({
       store,
       normalIntervalMs,
@@ -39,13 +40,18 @@ class MonitorEngine {
     }
 
     this.running = true;
+    this.logger.info('monitor_engine_started', {
+      activeMonitors: this.store.listMonitors().filter((monitor) => monitor.active).length
+    });
     this.syncMonitors();
 
     this.retentionTimer = setInterval(() => {
       try {
         this.store.pruneOldHistory();
       } catch (error) {
-        this.logger.error('Failed to prune old history', error);
+        this.logger.error('Failed to prune old history', error, {
+          operation: 'pruneOldHistory'
+        });
       }
     }, 24 * 60 * 60 * 1000);
 
@@ -54,6 +60,7 @@ class MonitorEngine {
 
   stop() {
     this.running = false;
+    this.logger.info('monitor_engine_stopped');
 
     for (const timer of this.timers.values()) {
       clearTimeout(timer);
@@ -74,6 +81,10 @@ class MonitorEngine {
 
     const activeMonitors = this.store.listMonitors().filter((monitor) => monitor.active);
     const activeIds = new Set(activeMonitors.map((monitor) => monitor.id));
+    this.logger.info('monitor_engine_sync', {
+      activeMonitors: activeMonitors.length,
+      scheduledMonitors: this.timers.size
+    });
 
     for (const monitor of activeMonitors) {
       if (!this.timers.has(monitor.id)) {
@@ -116,7 +127,9 @@ class MonitorEngine {
     const timer = setTimeout(() => {
       this.timers.delete(monitorId);
       this.executeMonitor(monitorId).catch((error) => {
-        this.logger.error(`Unhandled monitor execution error (${monitorId})`, error);
+        this.logger.error(`Unhandled monitor execution error (${monitorId})`, error, {
+          monitorId
+        });
         this.store.updateMonitorRuntime(monitorId, {
           lastError: error.message || 'Unhandled monitor engine error',
           nextCheckAt: null
