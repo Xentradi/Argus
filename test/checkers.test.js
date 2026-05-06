@@ -4,7 +4,8 @@ const { once } = require('node:events');
 const { before, after, test } = require('node:test');
 const childProcess = require('node:child_process');
 
-const { runCheck } = require('../src/checkers');
+const { runHttpCheck } = require('../src/checks/http');
+const { runKeywordCheck } = require('../src/checks/keyword');
 
 let server;
 let baseUrl;
@@ -59,21 +60,21 @@ after(async () => {
   await once(server, 'close');
 });
 
-function loadPingCheckWithStub(execFileImpl) {
+function loadPingAdapterWithStub(execFileImpl) {
   const originalExecFile = childProcess.execFile;
   childProcess.execFile = execFileImpl;
 
-  delete require.cache[require.resolve('../src/checkers')];
-  require('../src/checkers');
+  const pingPath = require.resolve('../src/checks/ping');
+  delete require.cache[pingPath];
 
   return () => {
     childProcess.execFile = originalExecFile;
-    delete require.cache[require.resolve('../src/checkers')];
+    delete require.cache[pingPath];
   };
 }
 
 test('HTTP mode 2xx accepts 204 responses', async () => {
-  const result = await runCheck(
+  const result = await runHttpCheck(
     monitor({
       checkType: 'http',
       url: `${baseUrl}/ok-204`,
@@ -86,7 +87,7 @@ test('HTTP mode 2xx accepts 204 responses', async () => {
 });
 
 test('HTTP mode 200 rejects 204 responses', async () => {
-  const result = await runCheck(
+  const result = await runHttpCheck(
     monitor({
       checkType: 'http',
       url: `${baseUrl}/ok-204`,
@@ -100,7 +101,7 @@ test('HTTP mode 200 rejects 204 responses', async () => {
 });
 
 test('keyword check supports case-insensitive matching', async () => {
-  const result = await runCheck(
+  const result = await runKeywordCheck(
     monitor({
       checkType: 'keyword',
       url: `${baseUrl}/keyword`,
@@ -115,7 +116,7 @@ test('keyword check supports case-insensitive matching', async () => {
 });
 
 test('keyword check can enforce case-sensitive matching', async () => {
-  const result = await runCheck(
+  const result = await runKeywordCheck(
     monitor({
       checkType: 'keyword',
       url: `${baseUrl}/keyword`,
@@ -130,8 +131,8 @@ test('keyword check can enforce case-sensitive matching', async () => {
   assert.match(result.reason, /not found/i);
 });
 
-test('ping check succeeds when at least one probe replies', async () => {
-  const restore = loadPingCheckWithStub((command, args, options, callback) => {
+test('ping adapter succeeds when at least one probe replies', async () => {
+  const restore = loadPingAdapterWithStub((command, args, options, callback) => {
     assert.equal(command, 'ping');
     if (process.platform === 'win32') {
       assert.deepEqual(args.slice(0, 2), ['-n', '3']);
@@ -147,14 +148,8 @@ test('ping check succeeds when at least one probe replies', async () => {
   });
 
   try {
-    const { runCheck: runCheckWithStub } = require('../src/checkers');
-    const result = await runCheckWithStub(
-      monitor({
-        checkType: 'ping',
-        host: '203.0.113.10',
-        timeoutMs: 1000
-      })
-    );
+    const { runPingCheck } = require('../src/checks/ping');
+    const result = await runPingCheck('203.0.113.10', 1000);
 
     assert.equal(result.success, true);
     assert.equal(result.reason, null);
@@ -163,8 +158,8 @@ test('ping check succeeds when at least one probe replies', async () => {
   }
 });
 
-test('ping check reports 100% loss only when all probes fail', async () => {
-  const restore = loadPingCheckWithStub((command, args, options, callback) => {
+test('ping adapter reports 100% loss only when all probes fail', async () => {
+  const restore = loadPingAdapterWithStub((command, args, options, callback) => {
     assert.equal(command, 'ping');
     if (process.platform === 'win32') {
       assert.deepEqual(args.slice(0, 2), ['-n', '3']);
@@ -180,18 +175,86 @@ test('ping check reports 100% loss only when all probes fail', async () => {
   });
 
   try {
-    const { runCheck: runCheckWithStub } = require('../src/checkers');
-    const result = await runCheckWithStub(
-      monitor({
-        checkType: 'ping',
-        host: '203.0.113.10',
-        timeoutMs: 1000
-      })
-    );
+    const { runPingCheck } = require('../src/checks/ping');
+    const result = await runPingCheck('203.0.113.10', 1000);
 
     assert.equal(result.success, false);
     assert.match(result.reason, /0\/3 replies/);
   } finally {
     restore();
+  }
+});
+
+test('dispatcher routes ping checks to the ping adapter', async () => {
+  const pingPath = require.resolve('../src/checks/ping');
+  const httpPath = require.resolve('../src/checks/http');
+  const keywordPath = require.resolve('../src/checks/keyword');
+  const checkersPath = require.resolve('../src/checkers');
+
+  const originalPing = require.cache[pingPath];
+  const originalHttp = require.cache[httpPath];
+  const originalKeyword = require.cache[keywordPath];
+  const originalCheckers = require.cache[checkersPath];
+
+  const calls = [];
+
+  require.cache[pingPath] = {
+    exports: {
+      runPingCheck: async (host, timeoutMs) => {
+        calls.push(['ping', host, timeoutMs]);
+        return { success: true, checkedAt: '2024-01-01T00:00:00.000Z', responseMs: 1, statusCode: null, keywordMatched: null, isTlsError: false, reason: null };
+      }
+    }
+  };
+  require.cache[httpPath] = {
+    exports: {
+      runHttpCheck: async (monitor) => {
+        calls.push(['http', monitor.checkType]);
+        return { success: true, checkedAt: '2024-01-01T00:00:00.000Z', responseMs: 1, statusCode: 200, keywordMatched: null, isTlsError: false, reason: null };
+      }
+    }
+  };
+  require.cache[keywordPath] = {
+    exports: {
+      runKeywordCheck: async (monitor) => {
+        calls.push(['keyword', monitor.checkType]);
+        return { success: true, checkedAt: '2024-01-01T00:00:00.000Z', responseMs: 1, statusCode: 200, keywordMatched: true, isTlsError: false, reason: null };
+      }
+    }
+  };
+
+  delete require.cache[checkersPath];
+  const { runCheck } = require('../src/checkers');
+
+  try {
+    const result = await runCheck({
+      checkType: 'ping',
+      host: '127.0.0.1',
+      timeoutMs: 123
+    });
+
+    assert.equal(result.success, true);
+    assert.deepEqual(calls, [['ping', '127.0.0.1', 123]]);
+  } finally {
+    if (originalPing) {
+      require.cache[pingPath] = originalPing;
+    } else {
+      delete require.cache[pingPath];
+    }
+    if (originalHttp) {
+      require.cache[httpPath] = originalHttp;
+    } else {
+      delete require.cache[httpPath];
+    }
+    if (originalKeyword) {
+      require.cache[keywordPath] = originalKeyword;
+    } else {
+      delete require.cache[keywordPath];
+    }
+    if (originalCheckers) {
+      require.cache[checkersPath] = originalCheckers;
+    } else {
+      delete require.cache[checkersPath];
+    }
   }
 });
