@@ -7,13 +7,14 @@ const { createIncidentsRepository } = require('./incidentsRepository');
 const { createEventsRepository } = require('./eventsRepository');
 
 function createRepositories(store) {
-  const users = createUsersRepository(store);
-  const apiKeys = createApiKeysRepository(store);
-  const groups = createGroupsRepository(store);
-  const monitors = createMonitorsRepository(store);
-  const statusPages = createStatusPagesRepository(store);
-  const incidents = createIncidentsRepository(store);
-  const events = createEventsRepository(store);
+  const db = store.db;
+  const users = createUsersRepository(db);
+  const groups = createGroupsRepository(db);
+  const monitors = createMonitorsRepository(db);
+  const statusPages = createStatusPagesRepository(db);
+  const incidents = createIncidentsRepository(db, monitors);
+  const events = createEventsRepository(db, store.retentionDays);
+  const apiKeys = createApiKeysRepository(db, users);
 
   return {
     users,
