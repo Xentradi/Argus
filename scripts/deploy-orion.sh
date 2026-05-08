@@ -34,6 +34,7 @@ if [[ "$current_branch" != "master" ]]; then
 fi
 
 git pull --ff-only origin master
+corepack pnpm install --frozen-lockfile
 pm2 startOrReload ecosystem.config.js --update-env
 health_port="$(
   node - <<'NODE'

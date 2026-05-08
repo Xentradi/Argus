@@ -2,10 +2,10 @@
 set -euo pipefail
 
 echo "[argus] reinstalling dependencies for current Node runtime..."
-npm ci
+corepack pnpm install --frozen-lockfile
 
 echo "[argus] rebuilding native addons..."
-npm run rebuild-native
+corepack pnpm run rebuild-native
 
 echo "[argus] reloading PM2 process..."
 pm2 startOrReload ecosystem.config.js
