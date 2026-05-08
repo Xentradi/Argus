@@ -1,11 +1,18 @@
 const crypto = require('crypto');
 const { nowIso, resolveOwnerUserId, rowToMonitor, toIntegerBoolean } = require('./shared');
+const { assertOwnedByUser } = require('../domain/invariants');
 
 function createMonitorsRepository(db) {
   function getMonitorRow(id, userId = null) {
     return userId
       ? db.prepare('SELECT * FROM monitors WHERE id = ? AND user_id = ?').get(id, userId)
       : db.prepare('SELECT * FROM monitors WHERE id = ?').get(id);
+  }
+
+  function getGroupRow(id) {
+    return db
+      .prepare('SELECT id, user_id, name, webhook_type, webhook_url, created_at, updated_at FROM monitor_groups WHERE id = ?')
+      .get(id);
   }
 
   function getNextMonitorSortOrder(groupId, userId = null) {
@@ -38,6 +45,15 @@ function createMonitorsRepository(db) {
 
     const currentMonitor = rowToMonitor(current);
     const targetGroupId = patch.groupId !== undefined ? patch.groupId || null : currentMonitor.groupId;
+    const targetGroup = targetGroupId ? getGroupRow(targetGroupId) : null;
+    if (targetGroup) {
+      assertOwnedByUser({
+        entityName: 'Group',
+        entityId: targetGroup.id,
+        ownerUserId: targetGroup.user_id || null,
+        userId: currentMonitor.userId
+      });
+    }
     const groupChanged = targetGroupId !== currentMonitor.groupId;
     const sortOrder =
       patch.sortOrder !== undefined
@@ -220,6 +236,15 @@ function createMonitorsRepository(db) {
       const now = nowIso();
       const groupId = payload.groupId || null;
       const userId = resolveOwnerUserId(db, payload.userId);
+      const group = groupId ? getGroupRow(groupId) : null;
+      if (group) {
+        assertOwnedByUser({
+          entityName: 'Group',
+          entityId: group.id,
+          ownerUserId: group.user_id || null,
+          userId
+        });
+      }
 
       const monitor = {
         id: crypto.randomUUID(),

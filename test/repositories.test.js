@@ -88,3 +88,79 @@ test('repository namespaces use the database-backed implementations', () => {
   repositories.events.pruneOldHistory();
   assert.equal(repositories.events.countEvents(user.id), 1);
 });
+
+test('createMonitor rejects assigning a group owned by another user', () => {
+  const alice = repositories.createUser({
+    username: 'alice',
+    passwordHash: 'hash-a',
+    totpSecret: 'secret-a'
+  });
+  const bob = repositories.createUser({
+    username: 'bob',
+    passwordHash: 'hash-b',
+    totpSecret: 'secret-b'
+  });
+
+  const aliceGroup = repositories.createGroup({
+    userId: alice.id,
+    name: 'Alice Group',
+    webhookType: 'slack',
+    webhookUrl: 'https://example.invalid/alice'
+  });
+
+  assert.throws(
+    () =>
+      repositories.createMonitor({
+        userId: bob.id,
+        name: 'Shared monitor',
+        checkType: 'http',
+        url: 'https://example.com',
+        groupId: aliceGroup.id,
+        groupName: aliceGroup.name,
+        webhookType: aliceGroup.webhookType,
+        webhookUrl: aliceGroup.webhookUrl
+      }),
+    /Group must belong to the current user\./
+  );
+});
+
+test('createStatusPage rejects monitor ids owned by another user', () => {
+  const alice = repositories.createUser({
+    username: 'alice',
+    passwordHash: 'hash-a',
+    totpSecret: 'secret-a'
+  });
+  const bob = repositories.createUser({
+    username: 'bob',
+    passwordHash: 'hash-b',
+    totpSecret: 'secret-b'
+  });
+
+  const aliceMonitor = repositories.createMonitor({
+    userId: alice.id,
+    name: 'Alice API',
+    checkType: 'http',
+    url: 'https://alice.example.com',
+    webhookType: 'slack',
+    webhookUrl: 'https://example.invalid/alice'
+  });
+  const bobMonitor = repositories.createMonitor({
+    userId: bob.id,
+    name: 'Bob API',
+    checkType: 'http',
+    url: 'https://bob.example.com',
+    webhookType: 'slack',
+    webhookUrl: 'https://example.invalid/bob'
+  });
+
+  assert.throws(
+    () =>
+      repositories.createStatusPage({
+        userId: alice.id,
+        name: 'Alice status',
+        slug: 'alice-status',
+        monitorIds: [aliceMonitor.id, bobMonitor.id]
+      }),
+    /Selected monitors must belong to the current user\./
+  );
+});

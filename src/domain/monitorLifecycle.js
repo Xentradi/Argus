@@ -6,6 +6,7 @@ const {
   buildRuntimePatch,
   buildRecoveryRuntimePatch
 } = require('./monitorSnapshot');
+const { assertRuntimePatchConsistency } = require('./invariants');
 const { normalizeLogger } = require('../observability/logger');
 
 class MonitorLifecycle {
@@ -87,6 +88,10 @@ class MonitorLifecycle {
       monitor: existingMonitor,
       result,
       status
+    });
+    assertRuntimePatchConsistency({
+      transition: status,
+      patch: runtimePatch
     });
 
     this.monitorRepository.updateMonitorRuntime(monitorId, runtimePatch);
@@ -353,6 +358,10 @@ class MonitorLifecycle {
         ...result,
         checkedAt: at
       }
+    });
+    assertRuntimePatchConsistency({
+      transition: 'up',
+      patch: recoveryPatch
     });
 
     this.monitorRepository.updateMonitorRuntime(monitor.id, recoveryPatch);

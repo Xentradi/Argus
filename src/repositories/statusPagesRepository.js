@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const { nowIso, resolveOwnerUserId, rowToStatusPage, rowToMonitor } = require('./shared');
+const { assertSelectedItemsBelongToUser } = require('../domain/invariants');
 
 function createStatusPagesRepository(db) {
   function listMonitorsForStatusPage(statusPageId) {
@@ -144,6 +145,13 @@ function createStatusPagesRepository(db) {
       if (selectedMonitorIds.length === 0) {
         throw new Error('No valid monitors were selected.');
       }
+
+      assertSelectedItemsBelongToUser({
+        entityName: 'monitors',
+        requestedIds: requestedMonitorIds,
+        matchedIds: selectedMonitorIds,
+        userId: trimmedUserId
+      });
 
       const now = nowIso();
       const statusPage = {
