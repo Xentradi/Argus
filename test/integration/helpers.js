@@ -8,6 +8,8 @@ const { once } = require('node:events');
 
 const { DataStore } = require('../../src/store');
 
+const repoRoot = path.join(__dirname, '..', '..');
+
 async function getFreePort() {
   const server = net.createServer();
   server.listen(0, '127.0.0.1');
@@ -31,7 +33,7 @@ function createTempWorkspace(prefix) {
 
 async function startArgusServer({ dbFile, sessionDbFile, port }) {
   const child = childProcess.spawn(process.execPath, ['src/app.js'], {
-    cwd: path.join('/Users/xen/projects/Argus'),
+    cwd: repoRoot,
     env: {
       ...process.env,
       NODE_ENV: 'test',

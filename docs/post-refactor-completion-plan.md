@@ -188,3 +188,17 @@ Why this is last:
 - Stop after Commit 9 if you want the data layer made structurally safe before touching lifecycle ports.
 - Stop after Commit 11 if the system is architecturally sound and you only want test consolidation left.
 
+## Completion
+
+Status:
+- The refactor plan has been carried through to completion on `refactor/argus-core-split`.
+- The final cleanup pass reduced redundant store-level tests and removed a hardcoded integration helper path.
+- The suite is green at the end state.
+
+End-state summary:
+- `app.js` is now a thin composition layer.
+- Snapshot assembly lives in query services.
+- Persistence logic lives in repositories rather than the old store monolith.
+- The lifecycle depends on explicit repository ports.
+- Ownership and runtime invariants are checked at mutation boundaries.
+- The test suite now favors seam tests and keeps the store layer to a small compatibility smoke surface.
