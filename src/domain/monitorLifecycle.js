@@ -264,9 +264,11 @@ class MonitorLifecycle {
       userId: monitor.userId || null,
       monitorId: monitor.id,
       monitorName: monitor.name,
-      eventType: alertResult.ok ? 'alert_down_sent' : 'alert_down_failed',
+      eventType: alertResult.ok ? 'alert_down_sent' : alertResult.skipped ? 'alert_down_suppressed' : 'alert_down_failed',
       message: alertResult.ok
         ? 'Down alert sent'
+        : alertResult.skipped
+          ? `Down alert suppressed: ${alertResult.error || 'disabled'}`
         : `Failed to send down alert: ${alertResult.error || 'unknown error'}`,
       details: {
         channel: currentMonitor.webhookType,
@@ -424,9 +426,11 @@ class MonitorLifecycle {
       userId: monitor.userId || null,
       monitorId: monitor.id,
       monitorName: monitor.name,
-      eventType: alertResult.ok ? 'alert_recovery_sent' : 'alert_recovery_failed',
+      eventType: alertResult.ok ? 'alert_recovery_sent' : alertResult.skipped ? 'alert_recovery_suppressed' : 'alert_recovery_failed',
       message: alertResult.ok
         ? 'Recovery alert sent'
+        : alertResult.skipped
+          ? `Recovery alert suppressed: ${alertResult.error || 'disabled'}`
         : `Failed to send recovery alert: ${alertResult.error || 'unknown error'}`,
       details: {
         channel: monitorAfterRecovery.webhookType,

@@ -1,0 +1,69 @@
+name: argus
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - ./secrets/app.env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_FILE: /app/data/argus.db
+      SESSION_DB_FILE: argus-sessions.sqlite
+      WEBHOOK_PUBLIC_BASE_URL: https://argus.x3n.us
+      # Migration observation mode: checks continue but no user-facing alert
+      # can leave this instance until the Aquila baseline is approved.
+      ALERTS_ENABLED: "false"
+    networks:
+      - app
+      # This private bridge provides outbound DNS, HTTP probes, and webhook
+      # delivery. Nothing is published from it and nginx remains the only
+      # inbound route to the application.
+      - egress
+    volumes:
+      - ./data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_RAW
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      app: {}
+      edge:
+        aliases:
+          - argus-proxy
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  app:
+    internal: true
+  egress:
+    internal: false
+  edge:
+    external: true
+    name: edge

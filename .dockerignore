@@ -1,0 +1,10 @@
+.git
+.claude
+memory
+node_modules
+data
+local
+.env
+*.db
+*.db-shm
+*.db-wal

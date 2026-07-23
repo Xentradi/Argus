@@ -5,6 +5,14 @@ const {
 } = require('./presentation');
 
 async function sendWebhookAlert(monitor, payload) {
+  if (String(process.env.ALERTS_ENABLED || 'true').toLowerCase() === 'false') {
+    return {
+      ok: false,
+      skipped: true,
+      error: 'Outbound alerts are temporarily disabled'
+    };
+  }
+
   if (!monitor.webhookUrl) {
     return {
       ok: false,
